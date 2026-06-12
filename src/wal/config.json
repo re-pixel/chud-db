@@ -1,0 +1,5 @@
+{
+    "WAL_DIR": "data/wal",
+    "WAL_SEGMENT_SIZE": 67108864,
+    "WAL_WRITE_BUFFER_SIZE": 65536
+}
