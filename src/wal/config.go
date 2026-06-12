@@ -10,9 +10,10 @@ import (
 var walConfigData []byte
 
 type WalConfig struct {
-	WALDir              string `json:"WAL_DIR"`
-	WALSegmentSize      int64  `json:"WAL_SEGMENT_SIZE"`
-	WALWriteBufferSize  int    `json:"WAL_WRITE_BUFFER_SIZE"`
+	WALDir             string `json:"WAL_DIR"`
+	WALSegmentSize     int64  `json:"WAL_SEGMENT_SIZE"`
+	WALWriteBufferSize int    `json:"WAL_WRITE_BUFFER_SIZE"`
+	WALSyncMode        string `json:"WAL_SYNC_MODE"`
 }
 
 func GetWalConfig() WalConfig {
