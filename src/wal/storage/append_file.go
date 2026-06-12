@@ -159,6 +159,28 @@ func (s *AppendFileStorage) Close() error {
 	return s.closeLocked()
 }
 
+func (s *AppendFileStorage) Purge() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if err := s.closeLocked(); err != nil {
+		return err
+	}
+
+	segments, err := s.listSegments()
+	if err != nil {
+		return err
+	}
+	for _, segment := range segments {
+		if err := os.Remove(segment.Path); err != nil {
+			return fmt.Errorf("failed to delete segment %s: %w", segment.Path, err)
+		}
+	}
+
+	s.nextLSN = 1
+	return s.openNewSegment(1)
+}
+
 func (s *AppendFileStorage) ListSegments() ([]SegmentInfo, error) {
 	return s.listSegments()
 }

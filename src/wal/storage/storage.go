@@ -13,6 +13,7 @@ type AppendStorage interface {
 	RotateIfNeeded() error
 	ActiveSegment() SegmentInfo
 	Close() error
+	Purge() error
 
 	ListSegments() ([]SegmentInfo, error)
 	OpenSegmentReader(segmentID uint64) (SegmentReader, error)

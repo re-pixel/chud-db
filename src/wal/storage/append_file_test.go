@@ -257,3 +257,38 @@ func TestReopenWithEmptyLastSegment(t *testing.T) {
 		t.Fatalf("expected next LSN 2, got %d", lsn)
 	}
 }
+
+func TestPurge(t *testing.T) {
+	store := newTestStorage(t, 1<<20)
+
+	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	if err := store.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+
+	segments, err := store.ListSegments()
+	if err != nil {
+		t.Fatalf("ListSegments failed: %v", err)
+	}
+	if len(segments) == 0 {
+		t.Fatal("expected segments before purge")
+	}
+
+	if err := store.Purge(); err != nil {
+		t.Fatalf("Purge failed: %v", err)
+	}
+
+	if records := readAllRecords(t, store); len(records) != 0 {
+		t.Fatalf("expected no records after purge, got %d", len(records))
+	}
+
+	lsn, err := store.Append(wal.OpPut, []byte("key2"), []byte("value2"))
+	if err != nil {
+		t.Fatalf("Append after purge failed: %v", err)
+	}
+	if lsn != 1 {
+		t.Fatalf("expected LSN to reset to 1, got %d", lsn)
+	}
+}
