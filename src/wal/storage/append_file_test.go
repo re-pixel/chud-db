@@ -221,3 +221,39 @@ func TestCRCMismatch(t *testing.T) {
 		t.Fatalf("expected EOF on corrupt record, got %v", err)
 	}
 }
+
+func TestReopenWithEmptyLastSegment(t *testing.T) {
+	dir := t.TempDir()
+
+	store, err := NewAppendStorageInDir(dir, 1<<20, 64)
+	if err != nil {
+		t.Fatalf("NewAppendStorageInDir failed: %v", err)
+	}
+	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	if err := store.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+	if err := store.Close(); err != nil {
+		t.Fatalf("Close failed: %v", err)
+	}
+
+	if _, err := os.Create(SegmentPathInDir(dir, 2)); err != nil {
+		t.Fatalf("Create empty segment failed: %v", err)
+	}
+
+	reopened, err := NewAppendStorageInDir(dir, 1<<20, 64)
+	if err != nil {
+		t.Fatalf("reopen failed: %v", err)
+	}
+	defer reopened.Close()
+
+	lsn, err := reopened.Append(wal.OpPut, []byte("key2"), []byte("value2"))
+	if err != nil {
+		t.Fatalf("Append after reopen failed: %v", err)
+	}
+	if lsn != 2 {
+		t.Fatalf("expected next LSN 2, got %d", lsn)
+	}
+}

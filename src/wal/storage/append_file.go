@@ -46,14 +46,6 @@ func (s *AppendFileStorage) init() error {
 		return err
 	}
 
-	maxLSN, err := s.scanMaxLSN()
-	if err != nil {
-		return err
-	}
-	if maxLSN > 0 {
-		s.nextLSN = maxLSN + 1
-	}
-
 	segments, err := s.listSegments()
 	if err != nil {
 		return err
@@ -63,6 +55,14 @@ func (s *AppendFileStorage) init() error {
 	}
 
 	last := segments[len(segments)-1]
+	maxLSN, err := s.maxLSNFromLastSegment(segments)
+	if err != nil {
+		return err
+	}
+	if maxLSN > 0 {
+		s.nextLSN = maxLSN + 1
+	}
+
 	info, err := os.Stat(last.Path)
 	if err != nil {
 		return err
@@ -77,31 +77,36 @@ func (s *AppendFileStorage) init() error {
 	return s.openSegment(last.ID, last.Path)
 }
 
-func (s *AppendFileStorage) scanMaxLSN() (uint64, error) {
-	segments, err := s.listSegments()
+func (s *AppendFileStorage) maxLSNFromLastSegment(segments []SegmentInfo) (uint64, error) {
+	last := segments[len(segments)-1]
+	info, err := os.Stat(last.Path)
 	if err != nil {
 		return 0, err
 	}
+	scanPath := last.Path
+	if info.Size() == 0 && len(segments) > 1 {
+		scanPath = segments[len(segments)-2].Path
+	}
+	return maxLSNInSegment(scanPath)
+}
+
+func maxLSNInSegment(path string) (uint64, error) {
+	reader, err := openSegmentReader(path)
+	if err != nil {
+		return 0, err
+	}
+	defer reader.Close()
 
 	var maxLSN uint64
-	for _, segment := range segments {
-		reader, err := openSegmentReader(segment.Path)
+	for {
+		record, err := reader.Next()
+		if err == io.EOF {
+			break
+		}
 		if err != nil {
 			return 0, err
 		}
-		for {
-			record, err := reader.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				return 0, err
-			}
-			if record.LSN > maxLSN {
-				maxLSN = record.LSN
-			}
-		}
-		reader.Close()
+		maxLSN = record.LSN
 	}
 	return maxLSN, nil
 }
