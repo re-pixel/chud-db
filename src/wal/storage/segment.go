@@ -23,7 +23,11 @@ func WalDir() string {
 }
 
 func SegmentPath(id uint64) string {
-	return filepath.Join(WalDir(), fmt.Sprintf("%09d.log", id))
+	return SegmentPathInDir(WalDir(), id)
+}
+
+func SegmentPathInDir(dir string, id uint64) string {
+	return filepath.Join(dir, fmt.Sprintf("%09d.log", id))
 }
 
 func EnsureWalDir() error {
@@ -51,7 +55,10 @@ func parseSegmentID(name string) (uint64, bool) {
 }
 
 func ListSegments() ([]SegmentInfo, error) {
-	dir := WalDir()
+	return ListSegmentsInDir(WalDir())
+}
+
+func ListSegmentsInDir(dir string) ([]SegmentInfo, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -81,7 +88,11 @@ func ListSegments() ([]SegmentInfo, error) {
 }
 
 func NextSegmentID() (uint64, error) {
-	segments, err := ListSegments()
+	return NextSegmentIDInDir(WalDir())
+}
+
+func NextSegmentIDInDir(dir string) (uint64, error) {
+	segments, err := ListSegmentsInDir(dir)
 	if err != nil {
 		return 0, err
 	}

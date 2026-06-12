@@ -13,10 +13,11 @@ const recordLenOffset = 4
 
 type AppendFileStorage struct {
 	mu              sync.Mutex
+	walDir          string
 	segmentSize     int64
 	writeBufferSize int
 	segmentID       uint64
-	segmentPath     string
+	activeSegmentPath string
 	file            *os.File
 	writeBuffer     []byte
 	nextLSN         uint64
@@ -24,9 +25,14 @@ type AppendFileStorage struct {
 
 func NewAppendStorage() (AppendStorage, error) {
 	cfg := wal.GetWalConfig()
+	return NewAppendStorageInDir(WalDir(), cfg.WALSegmentSize, cfg.WALWriteBufferSize)
+}
+
+func NewAppendStorageInDir(walDir string, segmentSize int64, writeBufferSize int) (AppendStorage, error) {
 	store := &AppendFileStorage{
-		segmentSize:     cfg.WALSegmentSize,
-		writeBufferSize: cfg.WALWriteBufferSize,
+		walDir:          walDir,
+		segmentSize:     segmentSize,
+		writeBufferSize: writeBufferSize,
 		nextLSN:         1,
 	}
 	if err := store.init(); err != nil {
@@ -36,11 +42,11 @@ func NewAppendStorage() (AppendStorage, error) {
 }
 
 func (s *AppendFileStorage) init() error {
-	if err := EnsureWalDir(); err != nil {
+	if err := os.MkdirAll(s.walDir, 0755); err != nil {
 		return err
 	}
 
-	maxLSN, err := scanMaxLSN()
+	maxLSN, err := s.scanMaxLSN()
 	if err != nil {
 		return err
 	}
@@ -48,7 +54,7 @@ func (s *AppendFileStorage) init() error {
 		s.nextLSN = maxLSN + 1
 	}
 
-	segments, err := ListSegments()
+	segments, err := s.listSegments()
 	if err != nil {
 		return err
 	}
@@ -62,7 +68,7 @@ func (s *AppendFileStorage) init() error {
 		return err
 	}
 	if info.Size() >= s.segmentSize {
-		id, err := NextSegmentID()
+		id, err := s.nextSegmentID()
 		if err != nil {
 			return err
 		}
@@ -71,8 +77,8 @@ func (s *AppendFileStorage) init() error {
 	return s.openSegment(last.ID, last.Path)
 }
 
-func scanMaxLSN() (uint64, error) {
-	segments, err := ListSegments()
+func (s *AppendFileStorage) scanMaxLSN() (uint64, error) {
+	segments, err := s.listSegments()
 	if err != nil {
 		return 0, err
 	}
@@ -139,7 +145,7 @@ func (s *AppendFileStorage) RotateIfNeeded() error {
 func (s *AppendFileStorage) ActiveSegment() SegmentInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return SegmentInfo{ID: s.segmentID, Path: s.segmentPath}
+	return SegmentInfo{ID: s.segmentID, Path: s.activeSegmentPath}
 }
 
 func (s *AppendFileStorage) Close() error {
@@ -149,15 +155,27 @@ func (s *AppendFileStorage) Close() error {
 }
 
 func (s *AppendFileStorage) ListSegments() ([]SegmentInfo, error) {
-	return ListSegments()
+	return s.listSegments()
 }
 
 func (s *AppendFileStorage) OpenSegmentReader(segmentID uint64) (SegmentReader, error) {
-	path := SegmentPath(segmentID)
+	path := s.segmentPath(segmentID)
 	if _, err := os.Stat(path); err != nil {
 		return nil, fmt.Errorf("segment %d not found: %w", segmentID, err)
 	}
 	return openSegmentReader(path)
+}
+
+func (s *AppendFileStorage) listSegments() ([]SegmentInfo, error) {
+	return ListSegmentsInDir(s.walDir)
+}
+
+func (s *AppendFileStorage) nextSegmentID() (uint64, error) {
+	return NextSegmentIDInDir(s.walDir)
+}
+
+func (s *AppendFileStorage) segmentPath(id uint64) string {
+	return SegmentPathInDir(s.walDir, id)
 }
 
 func (s *AppendFileStorage) flushLocked() error {
@@ -216,7 +234,7 @@ func (s *AppendFileStorage) rotateIfNeededLocked() error {
 	}
 	s.file = nil
 
-	id, err := NextSegmentID()
+	id, err := s.nextSegmentID()
 	if err != nil {
 		return err
 	}
@@ -224,7 +242,7 @@ func (s *AppendFileStorage) rotateIfNeededLocked() error {
 }
 
 func (s *AppendFileStorage) openNewSegment(id uint64) error {
-	path := SegmentPath(id)
+	path := s.segmentPath(id)
 	return s.openSegment(id, path)
 }
 
@@ -234,7 +252,7 @@ func (s *AppendFileStorage) openSegment(id uint64, path string) error {
 		return err
 	}
 	s.segmentID = id
-	s.segmentPath = path
+	s.activeSegmentPath = path
 	s.file = file
 	s.writeBuffer = s.writeBuffer[:0]
 	return nil
