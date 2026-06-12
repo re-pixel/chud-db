@@ -6,6 +6,7 @@ import (
 	"fmt"
 )
 
+//go:embed config.json
 var walConfigData []byte
 
 type WalConfig struct {

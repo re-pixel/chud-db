@@ -1,0 +1,292 @@
+package storage
+
+import (
+	"encoding/binary"
+	"fmt"
+	"io"
+	"nosqlEngine/src/wal"
+	"os"
+	"sync"
+)
+
+const recordLenOffset = 4
+
+type AppendFileStorage struct {
+	mu              sync.Mutex
+	segmentSize     int64
+	writeBufferSize int
+	segmentID       uint64
+	segmentPath     string
+	file            *os.File
+	writeBuffer     []byte
+	nextLSN         uint64
+}
+
+func NewAppendStorage() (AppendStorage, error) {
+	cfg := wal.GetWalConfig()
+	store := &AppendFileStorage{
+		segmentSize:     cfg.WALSegmentSize,
+		writeBufferSize: cfg.WALWriteBufferSize,
+		nextLSN:         1,
+	}
+	if err := store.init(); err != nil {
+		return nil, err
+	}
+	return store, nil
+}
+
+func (s *AppendFileStorage) init() error {
+	if err := EnsureWalDir(); err != nil {
+		return err
+	}
+
+	maxLSN, err := scanMaxLSN()
+	if err != nil {
+		return err
+	}
+	if maxLSN > 0 {
+		s.nextLSN = maxLSN + 1
+	}
+
+	segments, err := ListSegments()
+	if err != nil {
+		return err
+	}
+	if len(segments) == 0 {
+		return s.openNewSegment(1)
+	}
+
+	last := segments[len(segments)-1]
+	info, err := os.Stat(last.Path)
+	if err != nil {
+		return err
+	}
+	if info.Size() >= s.segmentSize {
+		id, err := NextSegmentID()
+		if err != nil {
+			return err
+		}
+		return s.openNewSegment(id)
+	}
+	return s.openSegment(last.ID, last.Path)
+}
+
+func scanMaxLSN() (uint64, error) {
+	segments, err := ListSegments()
+	if err != nil {
+		return 0, err
+	}
+
+	var maxLSN uint64
+	for _, segment := range segments {
+		reader, err := openSegmentReader(segment.Path)
+		if err != nil {
+			return 0, err
+		}
+		for {
+			record, err := reader.Next()
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				return 0, err
+			}
+			if record.LSN > maxLSN {
+				maxLSN = record.LSN
+			}
+		}
+		reader.Close()
+	}
+	return maxLSN, nil
+}
+
+func (s *AppendFileStorage) Append(op wal.Op, key, value []byte) (uint64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	lsn := s.nextLSN
+	s.nextLSN++
+
+	encoded, err := wal.EncodeRecord(op, key, value, lsn)
+	if err != nil {
+		return 0, err
+	}
+
+	s.writeBuffer = append(s.writeBuffer, encoded...)
+	if len(s.writeBuffer) >= s.writeBufferSize {
+		if err := s.flushLocked(); err != nil {
+			return 0, err
+		}
+	}
+	if err := s.rotateIfNeededLocked(); err != nil {
+		return 0, err
+	}
+	return lsn, nil
+}
+
+func (s *AppendFileStorage) Sync() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.syncLocked()
+}
+
+func (s *AppendFileStorage) RotateIfNeeded() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.rotateIfNeededLocked()
+}
+
+func (s *AppendFileStorage) ActiveSegment() SegmentInfo {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return SegmentInfo{ID: s.segmentID, Path: s.segmentPath}
+}
+
+func (s *AppendFileStorage) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.closeLocked()
+}
+
+func (s *AppendFileStorage) ListSegments() ([]SegmentInfo, error) {
+	return ListSegments()
+}
+
+func (s *AppendFileStorage) OpenSegmentReader(segmentID uint64) (SegmentReader, error) {
+	path := SegmentPath(segmentID)
+	if _, err := os.Stat(path); err != nil {
+		return nil, fmt.Errorf("segment %d not found: %w", segmentID, err)
+	}
+	return openSegmentReader(path)
+}
+
+func (s *AppendFileStorage) flushLocked() error {
+	if len(s.writeBuffer) == 0 {
+		return nil
+	}
+	if _, err := s.file.Write(s.writeBuffer); err != nil {
+		return err
+	}
+	s.writeBuffer = s.writeBuffer[:0]
+	return nil
+}
+
+func (s *AppendFileStorage) syncLocked() error {
+	if err := s.flushLocked(); err != nil {
+		return err
+	}
+	if s.file == nil {
+		return nil
+	}
+	return s.file.Sync()
+}
+
+func (s *AppendFileStorage) closeLocked() error {
+	if err := s.syncLocked(); err != nil {
+		return err
+	}
+	if s.file != nil {
+		err := s.file.Close()
+		s.file = nil
+		return err
+	}
+	return nil
+}
+
+func (s *AppendFileStorage) rotateIfNeededLocked() error {
+	if s.file == nil {
+		return nil
+	}
+	if err := s.flushLocked(); err != nil {
+		return err
+	}
+	info, err := s.file.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() < s.segmentSize {
+		return nil
+	}
+
+	if err := s.file.Sync(); err != nil {
+		return err
+	}
+	if err := s.file.Close(); err != nil {
+		return err
+	}
+	s.file = nil
+
+	id, err := NextSegmentID()
+	if err != nil {
+		return err
+	}
+	return s.openNewSegment(id)
+}
+
+func (s *AppendFileStorage) openNewSegment(id uint64) error {
+	path := SegmentPath(id)
+	return s.openSegment(id, path)
+}
+
+func (s *AppendFileStorage) openSegment(id uint64, path string) error {
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	s.segmentID = id
+	s.segmentPath = path
+	s.file = file
+	s.writeBuffer = s.writeBuffer[:0]
+	return nil
+}
+
+type fileSegmentReader struct {
+	file *os.File
+}
+
+func openSegmentReader(path string) (*fileSegmentReader, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	return &fileSegmentReader{file: file}, nil
+}
+
+func (r *fileSegmentReader) Next() (wal.Record, error) {
+	header := make([]byte, 8)
+	_, err := io.ReadFull(r.file, header)
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return wal.Record{}, io.EOF
+	}
+	if err != nil {
+		return wal.Record{}, err
+	}
+
+	recordLen := int(binary.LittleEndian.Uint32(header[recordLenOffset:8]))
+	if recordLen < 8 {
+		return wal.Record{}, io.EOF
+	}
+
+	recordBuf := make([]byte, recordLen)
+	copy(recordBuf, header)
+	_, err = io.ReadFull(r.file, recordBuf[8:recordLen])
+	if err == io.EOF || err == io.ErrUnexpectedEOF {
+		return wal.Record{}, io.EOF
+	}
+	if err != nil {
+		return wal.Record{}, err
+	}
+
+	record, err := wal.DecodeRecord(recordBuf)
+	if err != nil {
+		return wal.Record{}, io.EOF
+	}
+	return record, nil
+}
+
+func (r *fileSegmentReader) Close() error {
+	return r.file.Close()
+}
+
+var _ AppendStorage = (*AppendFileStorage)(nil)
+var _ SegmentReader = (*fileSegmentReader)(nil)
