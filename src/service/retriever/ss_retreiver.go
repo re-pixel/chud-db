@@ -15,7 +15,7 @@ type EntryRetriever struct {
 	fileReader   file_reader.FileReader
 	sstablePaths []string
 	currentIndex int
-
+	dataRoot     string
 }
 
 type EntryRetrieverPool struct {
@@ -37,8 +37,11 @@ type EntryRetrieverPool struct {
 
 
 func NewEntryRetriever(bm *block_manager.BlockManager) *EntryRetriever {
-	// Initialize SSTable pool by scanning for sstable files
-	sstablePaths := getFilesFromLevel(0)
+	return NewEntryRetrieverInDir(bm, utils.DefaultDataRoot())
+}
+
+func NewEntryRetrieverInDir(bm *block_manager.BlockManager, dataRoot string) *EntryRetriever {
+	sstablePaths := utils.ListSSTablesInLevel(dataRoot, 0)
 
 	// Create a single block manager and file reader instance
 	var fileReader file_reader.FileReader
@@ -55,6 +58,7 @@ func NewEntryRetriever(bm *block_manager.BlockManager) *EntryRetriever {
 		fileReader:   fileReader,
 		sstablePaths: sstablePaths,
 		currentIndex: 0,
+		dataRoot:     dataRoot,
 	}
 }
 
@@ -154,7 +158,7 @@ func (r *EntryRetriever) RetrieveEntry(key string) (string, bool, error) {
 	r.currentIndex = 0 // Reset to first SSTable
 	r.sstablePaths = []string{}
 	for i := 0; i <= CONFIG.LSMLevels; i++ {
-		r.sstablePaths = append(r.sstablePaths, utils.GetPaths("data/sstable/lvl"+fmt.Sprint(i), ".db")...)
+		r.sstablePaths = append(r.sstablePaths, utils.ListSSTablesInLevel(r.dataRoot, i)...)
 	}
 	if len(r.sstablePaths) == 0 {
 		return "", false, fmt.Errorf("no SSTables found")

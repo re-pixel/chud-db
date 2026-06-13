@@ -10,6 +10,7 @@ import (
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
 	m "nosqlEngine/src/storage/memtable"
+	"nosqlEngine/src/utils"
 	"testing"
 
 	"github.com/google/uuid"
@@ -129,7 +130,7 @@ func TestCompacter(t *testing.T) {
 	bm := b.NewBlockManager()
 	sc := ss_compacter.NewSSCompacterST()
 
-	if !sc.CheckCompactionConditions(bm) {
+	if !sc.CheckCompactionConditions(bm, utils.DefaultDataRoot()) {
 		t.Fatalf("Compaction conditions not met")
 	}
 

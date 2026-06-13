@@ -9,10 +9,8 @@ import (
 	"nosqlEngine/src/service/file_writer"
 	"nosqlEngine/src/service/retriever"
 	"nosqlEngine/src/service/ss_parser"
+	"nosqlEngine/src/utils"
 	"os"
-	"path/filepath"
-	"runtime"
-	"strings"
 
 	"github.com/google/uuid"
 )
@@ -26,40 +24,17 @@ func NewSSCompacterST() *SSCompacterST {
 	return &SSCompacterST{}
 }
 
-func getProjectRoot() string {
-	_, filename, _, _ := runtime.Caller(0)
-	// Go up from src/service/file_writer/writer.go to project root
-	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(filename))))
-	return projectRoot
-}
-
-func getFilesFromLevel(level int) []string {
-	var sstablePaths []string
-
-	sstableDir := filepath.ToSlash(filepath.Join(getProjectRoot(), "data/sstable"))
-	sstablePaths = make([]string, 0)
-
-	files, _ := os.ReadDir(sstableDir + "/lvl" + fmt.Sprint(level))
-	for _, file := range files {
-		if !strings.HasSuffix(file.Name(), ".db") {
-			continue
-		}
-		sstablePaths = append(sstablePaths, filepath.Join(sstableDir+"/lvl"+fmt.Sprint(level), file.Name()))
-	}
-
-	return sstablePaths
-}
-func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager) bool {
+func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string) bool {
 	level := 0
 	compacted := false
 	for level < CONFIG.LSMLevels {
-		sstFiles := getFilesFromLevel(level)
+		sstFiles := utils.ListSSTablesInLevel(dataRoot, level)
 
 		for len(sstFiles) >= CONFIG.CompactionThreshold {
 			toCompact := sstFiles[:CONFIG.CompactionThreshold]
 			sstFiles = sstFiles[CONFIG.CompactionThreshold:]
 			lvlDir := fmt.Sprintf("lvl%d", level+1)
-			fw := file_writer.NewFileWriter(bm, CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db")
+			fw := file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db", dataRoot)
 			sc.compactTables(toCompact, fw, bm)
 			for _, file := range toCompact {
 				os.Remove(file)

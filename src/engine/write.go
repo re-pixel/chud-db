@@ -10,11 +10,13 @@ func (engine *Engine) Write(user string, key string, value string, fromWal bool)
 		engine.memtables[engine.curr_mem_index].Clear()
 	}
 
-	var lsn uint64
-	if !fromWal {
+	if !fromWal && !engine.skipRateLimit {
 		if ok, err := engine.userLimiter.CheckUserTokens(user); !ok {
 			return fmt.Errorf("user %s is not allowed to write: %w", user, err)
 		}
+	}
+	var lsn uint64
+	if !fromWal {
 		var err error
 		if value == CONFIG.Tombstone {
 			lsn, err = engine.wal.AppendDelete(key)
@@ -50,7 +52,7 @@ func (engine *Engine) Write(user string, key string, value string, fromWal bool)
 
 		go func() {
 			<-done // wait for FlushMemtable to finish
-			engine.ss_compacter.CheckCompactionConditions(engine.block_manager)
+			engine.ss_compacter.CheckCompactionConditions(engine.block_manager, engine.dataRoot)
 		}()
 	}
 	return nil

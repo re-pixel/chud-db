@@ -3,8 +3,8 @@ package file_writer
 import (
 	"fmt"
 	"nosqlEngine/src/service/block_manager"
+	"nosqlEngine/src/utils"
 	"path/filepath"
-	"runtime"
 
 	"github.com/google/uuid"
 )
@@ -12,6 +12,7 @@ import (
 type FileWriter struct {
 	block_manager   block_manager.BlockManager
 	location        string
+	dataRoot        string
 	currentBlock    []byte
 	currentBlockNum int
 	blockSize       int
@@ -19,23 +20,19 @@ type FileWriter struct {
 	allDataWritten  []byte
 }
 
-func getProjectRoot() string {
-	_, filename, _, _ := runtime.Caller(0)
-	// Go up from src/service/file_writer/writer.go to project root
-	projectRoot := filepath.Dir(filepath.Dir(filepath.Dir(filepath.Dir(filename))))
-	return projectRoot
+func NewFileWriter(bm *block_manager.BlockManager, blockSize int, name string) *FileWriter {
+	return NewFileWriterInDir(bm, blockSize, name, utils.DefaultDataRoot())
 }
 
-func NewFileWriter(bm *block_manager.BlockManager, blockSize int, name string) *FileWriter {
+func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name string, dataRoot string) *FileWriter {
 	if name == "" {
 		name = generateFileName(0) // Default name if not provided
 	}
-	projectRoot := getProjectRoot()
-	dataPath := filepath.Join(projectRoot, "data")
-	location := filepath.Join(dataPath, name)
+	location := filepath.Join(dataRoot, name)
 	return &FileWriter{
 		block_manager:   *bm,
 		location:        location,
+		dataRoot:        dataRoot,
 		currentBlock:    make([]byte, 0, blockSize),
 		currentBlockNum: 0,
 		blockSize:       blockSize,
@@ -252,12 +249,9 @@ func (fw *FileWriter) ResetFileWriter(name string) {
 	if name == "" {
 		name = generateFileName(0) // Default name if not provided
 	}
-	projectRoot := getProjectRoot()
-	dataPath := filepath.Join(projectRoot, "data")
-	location := filepath.Join(dataPath, name)
 	fw.currentBlock = make([]byte, 0, fw.blockSize)
 	fw.currentBlockNum = 0
 	fw.offsetInBlock = 0
 	fw.allDataWritten = make([]byte, 0)
-	fw.location = location
+	fw.location = filepath.Join(fw.dataRoot, name)
 }
