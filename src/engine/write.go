@@ -10,24 +10,30 @@ func (engine *Engine) Write(user string, key string, value string, fromWal bool)
 		engine.memtables[engine.curr_mem_index].Clear()
 	}
 
+	var lsn uint64
 	if !fromWal {
 		if ok, err := engine.userLimiter.CheckUserTokens(user); !ok {
 			return fmt.Errorf("user %s is not allowed to write: %w", user, err)
 		}
-		// write to WAL
-		var ok error
+		var err error
 		if value == CONFIG.Tombstone {
-			ok = engine.wal.WriteDelete(key)
+			lsn, err = engine.wal.AppendDelete(key)
 		} else {
-			ok = engine.wal.WritePut(key, value)
+			lsn, err = engine.wal.AppendPut(key, value)
 		}
-		if ok != nil {
-			return fmt.Errorf("failed to write to WAL: %w", ok)
+		if err != nil {
+			return fmt.Errorf("failed to write to WAL: %w", err)
 		}
 	}
 
 	write_mem := engine.memtables[engine.curr_mem_index]
 	write_mem.Add(key, value)
+
+	if !fromWal {
+		if err := engine.wal.WaitDurable(lsn); err != nil {
+			return fmt.Errorf("wal durability failed: %w", err)
+		}
+	}
 	if write_mem.GetSize() >= CONFIG.MemtableSize && !fromWal {
 		engine.SetNextMemtable()
 		done := make(chan struct{})
