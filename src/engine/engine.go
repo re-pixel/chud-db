@@ -10,7 +10,8 @@ import (
 	"nosqlEngine/src/service/ss_parser"
 	"nosqlEngine/src/service/user_limiter"
 	"nosqlEngine/src/storage/memtable"
-	"nosqlEngine/src/storage/wal"
+	"nosqlEngine/src/wal"
+	"nosqlEngine/src/wal/record"
 	"sync"
 )
 
@@ -35,7 +36,7 @@ func NewEngine() *Engine {
 	for i := 0; i < memtableCount; i++ {
 		memtables[i] = memtable.NewMemtable()
 	}
-	wal, err := wal.NewWAL(bm)
+	walInstance, err := wal.NewWAL()
 	if err != nil {
 		fmt.Println("Error creating WAL:", err)
 		return nil
@@ -46,7 +47,7 @@ func NewEngine() *Engine {
 		ss_parser:      ss_parser.NewSSParser(file_writer.NewFileWriter(bm, CONFIG.BlockSize, "")),
 		ss_compacter:   ss_compacter.NewSSCompacterST(),
 		entryRetriever: retriever.NewEntryRetriever(bm),
-		wal:            wal,
+		wal:            walInstance,
 		curr_mem_index: 0,
 		block_manager:  bm,
 		flush_lock:     &sync.Mutex{},
@@ -60,14 +61,17 @@ func (engine *Engine) checkIfMemtableFull() bool {
 }
 
 func (engine *Engine) Start() {
-	recoveredEntries, err := wal.ReplayWAL(engine.block_manager)
+	recoveredEntries, err := engine.wal.Replay()
 	if err != nil {
 		fmt.Println("Error replaying WAL:", err)
 		return
 	}
-	fmt.Print(recoveredEntries)
 	for _, entry := range recoveredEntries {
-		engine.Write("", entry.Key, entry.Value, true)
+		value := entry.Value
+		if entry.Op == record.OpDelete {
+			value = CONFIG.Tombstone
+		}
+		engine.Write("", entry.Key, value, true)
 	}
 }
 func (engine *Engine) Shut() error {

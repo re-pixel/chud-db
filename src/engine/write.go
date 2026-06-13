@@ -37,7 +37,7 @@ func (engine *Engine) Write(user string, key string, value string, fromWal bool)
 
 			engine.ss_parser.FlushMemtable(write_mem.ToRaw())
 			if engine.curr_mem_index == 0 {
-				engine.wal.DeleteWALSegments()
+				engine.wal.Purge()
 			}
 			close(done) // signal that FlushMemtable is done
 		}()
