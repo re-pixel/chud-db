@@ -37,13 +37,14 @@ func (engine *Engine) Write(user string, key string, value string, fromWal bool)
 		}
 	}
 	if write_mem.GetSize() >= CONFIG.MemtableSize && !fromWal {
+		flushData := write_mem.ToRaw()
 		engine.SetNextMemtable()
 		done := make(chan struct{})
 		go func() {
 			engine.flush_lock.Lock()
 			defer engine.flush_lock.Unlock()
 
-			engine.ss_parser.FlushMemtable(write_mem.ToRaw())
+			engine.ss_parser.FlushMemtable(flushData)
 			if engine.curr_mem_index == 0 {
 				engine.wal.Purge()
 			}
@@ -52,7 +53,9 @@ func (engine *Engine) Write(user string, key string, value string, fromWal bool)
 
 		go func() {
 			<-done // wait for FlushMemtable to finish
-			engine.ss_compacter.CheckCompactionConditions(engine.block_manager, engine.dataRoot)
+			if !engine.skipCompaction {
+				engine.ss_compacter.CheckCompactionConditions(engine.block_manager, engine.dataRoot)
+			}
 		}()
 	}
 	return nil

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"nosqlEngine/src/service/block_manager"
 	"nosqlEngine/src/utils"
+	"os"
 	"path/filepath"
 
 	"github.com/google/uuid"
@@ -29,6 +30,9 @@ func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name stri
 		name = generateFileName(0) // Default name if not provided
 	}
 	location := filepath.Join(dataRoot, name)
+	if err := os.MkdirAll(filepath.Dir(location), 0755); err != nil {
+		fmt.Println("Error creating sstable dir:", err)
+	}
 	return &FileWriter{
 		block_manager:   *bm,
 		location:        location,
@@ -254,4 +258,7 @@ func (fw *FileWriter) ResetFileWriter(name string) {
 	fw.offsetInBlock = 0
 	fw.allDataWritten = make([]byte, 0)
 	fw.location = filepath.Join(fw.dataRoot, name)
+	if err := os.MkdirAll(filepath.Dir(fw.location), 0755); err != nil {
+		fmt.Println("Error creating sstable dir:", err)
+	}
 }

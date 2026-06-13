@@ -30,6 +30,7 @@ type Engine struct {
 	flush_lock     *sync.Mutex
 	dataRoot       string
 	skipRateLimit  bool
+	skipCompaction bool
 }
 
 func NewEngine() *Engine {
@@ -38,10 +39,10 @@ func NewEngine() *Engine {
 		fmt.Println("Error creating WAL:", err)
 		return nil
 	}
-	return newEngine(utils.DefaultDataRoot(), walInstance, false)
+	return newEngine(utils.DefaultDataRoot(), walInstance, false, false)
 }
 
-func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit bool) *Engine {
+func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompaction bool) *Engine {
 	bm := block_manager.NewBlockManager()
 	memtableCount := CONFIG.MemtableCount
 	memtables := make([]memtable.Memtable, memtableCount)
@@ -60,6 +61,7 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit bool) *Engin
 		flush_lock:     &sync.Mutex{},
 		dataRoot:       dataRoot,
 		skipRateLimit:  skipRateLimit,
+		skipCompaction: skipCompaction,
 	}
 }
 
@@ -89,4 +91,10 @@ func (engine *Engine) Start() {
 func (engine *Engine) Shut() error {
 	engine.wal.Flush()
 	return nil
+}
+
+// WaitFlushIdle blocks until any in-flight memtable flush completes.
+func (engine *Engine) WaitFlushIdle() {
+	engine.flush_lock.Lock()
+	defer engine.flush_lock.Unlock()
 }

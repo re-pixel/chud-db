@@ -32,5 +32,5 @@ func NewBenchEngine(benchDir string) (*Engine, error) {
 	}
 
 	walInstance := wal.NewWALWithStorage(store, cfg.WALSyncMode)
-	return newEngine(benchDir, walInstance, true), nil
+	return newEngine(benchDir, walInstance, true, true), nil
 }
