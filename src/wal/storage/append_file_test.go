@@ -87,6 +87,32 @@ func TestAppendAndSync(t *testing.T) {
 	}
 }
 
+func TestDurableLSNTracksSync(t *testing.T) {
+	store := newTestStorage(t, 1<<20)
+
+	if store.DurableLSN() != 0 {
+		t.Fatalf("expected DurableLSN 0 before any append, got %d", store.DurableLSN())
+	}
+
+	lsn, err := store.Append(record.OpPut, []byte("key1"), []byte("value1"))
+	if err != nil {
+		t.Fatalf("Append failed: %v", err)
+	}
+	if store.AppendedLSN() != lsn {
+		t.Fatalf("AppendedLSN mismatch: got %d want %d", store.AppendedLSN(), lsn)
+	}
+	if store.DurableLSN() != 0 {
+		t.Fatalf("expected DurableLSN 0 before sync, got %d", store.DurableLSN())
+	}
+
+	if err := store.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+	if store.DurableLSN() != lsn {
+		t.Fatalf("expected DurableLSN %d after sync, got %d", lsn, store.DurableLSN())
+	}
+}
+
 func TestSegmentRotation(t *testing.T) {
 	store := newTestStorage(t, 256)
 

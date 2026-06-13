@@ -12,6 +12,8 @@ type AppendStorage interface {
 	Sync() error
 	RotateIfNeeded() error
 	ActiveSegment() SegmentInfo
+	DurableLSN() uint64
+	AppendedLSN() uint64
 	Close() error
 	Purge() error
 

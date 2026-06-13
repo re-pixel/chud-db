@@ -22,6 +22,8 @@ type AppendFileStorage struct {
 	file            *os.File
 	writeBuffer     []byte
 	nextLSN         uint64
+	appendedLSN     uint64
+	durableLSN      uint64
 }
 
 func NewAppendStorage() (AppendStorage, error) {
@@ -63,6 +65,8 @@ func (s *AppendFileStorage) init() error {
 	if maxLSN > 0 {
 		s.nextLSN = maxLSN + 1
 	}
+	s.appendedLSN = maxLSN
+	s.durableLSN = maxLSN
 
 	info, err := os.Stat(last.Path)
 	if err != nil {
@@ -125,6 +129,7 @@ func (s *AppendFileStorage) Append(op record.Op, key, value []byte) (uint64, err
 	}
 
 	s.writeBuffer = append(s.writeBuffer, encoded...)
+	s.appendedLSN = lsn
 	if len(s.writeBuffer) >= s.writeBufferSize {
 		if err := s.flushLocked(); err != nil {
 			return 0, err
@@ -152,6 +157,18 @@ func (s *AppendFileStorage) ActiveSegment() SegmentInfo {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return SegmentInfo{ID: s.segmentID, Path: s.activeSegmentPath}
+}
+
+func (s *AppendFileStorage) DurableLSN() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.durableLSN
+}
+
+func (s *AppendFileStorage) AppendedLSN() uint64 {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.appendedLSN
 }
 
 func (s *AppendFileStorage) Close() error {
@@ -224,7 +241,11 @@ func (s *AppendFileStorage) syncLocked() error {
 	if s.file == nil {
 		return nil
 	}
-	return s.file.Sync()
+	if err := s.file.Sync(); err != nil {
+		return err
+	}
+	s.durableLSN = s.appendedLSN
+	return nil
 }
 
 func (s *AppendFileStorage) closeLocked() error {
@@ -257,6 +278,7 @@ func (s *AppendFileStorage) rotateIfNeededLocked() error {
 	if err := s.file.Sync(); err != nil {
 		return err
 	}
+	s.durableLSN = s.appendedLSN
 	if err := s.file.Close(); err != nil {
 		return err
 	}
