@@ -12,7 +12,7 @@ func TestReplayPutDelete(t *testing.T) {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
-	w := NewWALWithStorage(store, "batch")
+	w := NewWALWithStorage(store, "group")
 	if err := w.WritePut("key1", "value1"); err != nil {
 		t.Fatalf("WritePut failed: %v", err)
 	}
@@ -50,7 +50,7 @@ func TestReplayMultiSegment(t *testing.T) {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
-	w := NewWALWithStorage(store, "batch")
+	w := NewWALWithStorage(store, "group")
 	for i := 0; i < 20; i++ {
 		key := string([]byte{'a' + byte(i)})
 		value := "value-with-enough-bytes-to-grow-segment"
@@ -90,7 +90,7 @@ func TestReplayFunc(t *testing.T) {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
-	w := NewWALWithStorage(store, "batch")
+	w := NewWALWithStorage(store, "group")
 	if err := w.WritePut("key1", "value1"); err != nil {
 		t.Fatalf("WritePut failed: %v", err)
 	}
