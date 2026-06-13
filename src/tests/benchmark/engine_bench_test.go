@@ -46,7 +46,7 @@ func setupBenchEngine(b *testing.B) (*engine.Engine, string) {
 	eng.Start()
 	b.Cleanup(func() {
 		eng.WaitFlushIdle()
-		time.Sleep(50 * time.Millisecond)
+		time.Sleep(200 * time.Millisecond)
 		if err := eng.Shut(); err != nil {
 			b.Errorf("Shut: %v", err)
 		}

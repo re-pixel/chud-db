@@ -1,0 +1,57 @@
+goos: linux
+goarch: amd64
+pkg: nosqlEngine/src/tests/benchmark
+cpu: AMD Ryzen 7 7730U with Radeon Graphics         
+BenchmarkPutSequential-16       	     130	   9453290 ns/op	       105.8 puts/sec	   26846 B/op	     409 allocs/op
+BenchmarkPutSequential-16       	     130	   8869626 ns/op	       112.7 puts/sec	   26132 B/op	     394 allocs/op
+BenchmarkPutSequential-16       	     141	   9482420 ns/op	       105.5 puts/sec	   27125 B/op	     413 allocs/op
+BenchmarkPutSequential-16       	     237	   5155669 ns/op	       194.0 puts/sec	   25314 B/op	     386 allocs/op
+BenchmarkPutSequential-16       	     218	   5437970 ns/op	       183.9 puts/sec	   25706 B/op	     394 allocs/op
+BenchmarkGetMemtableHit-16      	33863905	        34.54 ns/op	  28951316 gets/sec	       0 B/op	       0 allocs/op
+BenchmarkGetMemtableHit-16      	34055124	        47.18 ns/op	  21195965 gets/sec	       0 B/op	       0 allocs/op
+BenchmarkGetMemtableHit-16      	31344100	        32.32 ns/op	  30941516 gets/sec	       0 B/op	       0 allocs/op
+BenchmarkGetMemtableHit-16      	34196360	        36.31 ns/op	  27538491 gets/sec	       0 B/op	       0 allocs/op
+BenchmarkGetMemtableHit-16      	38883147	        33.85 ns/op	  29540740 gets/sec	       0 B/op	       0 allocs/op
+BenchmarkGetSSTable-16          	     925	   1701321 ns/op	       587.8 gets/sec	   52513 B/op	     412 allocs/op
+BenchmarkGetSSTable-16          	     987	   1210774 ns/op	       825.9 gets/sec	   52417 B/op	     412 allocs/op
+BenchmarkGetSSTable-16          	    1002	   1203951 ns/op	       830.6 gets/sec	   52384 B/op	     412 allocs/op
+BenchmarkGetSSTable-16          	    1015	   1168559 ns/op	       855.8 gets/sec	   52374 B/op	     412 allocs/op
+BenchmarkGetSSTable-16          	     727	   1533377 ns/op	       652.2 gets/sec	   52466 B/op	     412 allocs/op
+BenchmarkDeleteSequential-16    	     100	  10953456 ns/op	        91.30 deletes/sec	   51751 B/op	     795 allocs/op
+BenchmarkDeleteSequential-16    	     100	  11267406 ns/op	        88.75 deletes/sec	   51958 B/op	     796 allocs/op
+BenchmarkDeleteSequential-16    	     100	  10890319 ns/op	        91.82 deletes/sec	   50523 B/op	     780 allocs/op
+BenchmarkDeleteSequential-16    	     100	  11929643 ns/op	        83.82 deletes/sec	   51484 B/op	     792 allocs/op
+BenchmarkDeleteSequential-16    	     100	  11499951 ns/op	        86.96 deletes/sec	   51652 B/op	     798 allocs/op
+BenchmarkMixedReadWrite-16      	    2384	    487177 ns/op	    1695 B/op	      27 allocs/op
+BenchmarkMixedReadWrite-16      	    3972	    377955 ns/op	    1737 B/op	      28 allocs/op
+BenchmarkMixedReadWrite-16      	    4114	    298675 ns/op	    1753 B/op	      28 allocs/op
+BenchmarkMixedReadWrite-16      	    3771	    304349 ns/op	    1755 B/op	      28 allocs/op
+BenchmarkMixedReadWrite-16      	    4072	    326081 ns/op	    1766 B/op	      28 allocs/op
+PASS
+ok  	nosqlEngine/src/tests/benchmark	62.173s
+goos: linux
+goarch: amd64
+pkg: nosqlEngine/src/wal
+cpu: AMD Ryzen 7 7730U with Radeon Graphics         
+BenchmarkWALAppendPutSequential-16               	  116978	     10041 ns/op	     304 B/op	       5 allocs/op
+BenchmarkWALAppendPutSequential-16               	  128186	     10229 ns/op	     304 B/op	       5 allocs/op
+BenchmarkWALAppendPutSequential-16               	  134086	      9577 ns/op	     304 B/op	       5 allocs/op
+BenchmarkWALAppendPutSequential-16               	  123276	     10361 ns/op	     304 B/op	       5 allocs/op
+BenchmarkWALAppendPutSequential-16               	  129278	     10029 ns/op	     304 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableSequential-16    	     285	   4052792 ns/op	     298 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableSequential-16    	     295	   4825048 ns/op	     298 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableSequential-16    	     302	   4351378 ns/op	     298 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableSequential-16    	     258	   4503774 ns/op	     298 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableSequential-16    	     253	   4083325 ns/op	     298 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableParallel-16      	    1658	    734138 ns/op	     322 B/op	       6 allocs/op
+BenchmarkWALAppendPutWaitDurableParallel-16      	    1657	    733299 ns/op	     314 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableParallel-16      	    1454	    797209 ns/op	     317 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableParallel-16      	    1514	    893533 ns/op	     310 B/op	       5 allocs/op
+BenchmarkWALAppendPutWaitDurableParallel-16      	    1488	    804242 ns/op	     320 B/op	       5 allocs/op
+BenchmarkWALWritePutSequential-16                	     270	   3953981 ns/op	     297 B/op	       5 allocs/op
+BenchmarkWALWritePutSequential-16                	     304	   4184193 ns/op	     299 B/op	       5 allocs/op
+BenchmarkWALWritePutSequential-16                	     286	   4501949 ns/op	     298 B/op	       5 allocs/op
+BenchmarkWALWritePutSequential-16                	     254	   4413370 ns/op	     297 B/op	       5 allocs/op
+BenchmarkWALWritePutSequential-16                	     271	   4545592 ns/op	     297 B/op	       5 allocs/op
+PASS
+ok  	nosqlEngine/src/wal	31.431s
