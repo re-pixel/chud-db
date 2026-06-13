@@ -1,4 +1,4 @@
-package wal
+package config
 
 import (
 	_ "embed"
@@ -9,15 +9,15 @@ import (
 //go:embed config.json
 var walConfigData []byte
 
-type WalConfig struct {
+type Config struct {
 	WALDir             string `json:"WAL_DIR"`
 	WALSegmentSize     int64  `json:"WAL_SEGMENT_SIZE"`
 	WALWriteBufferSize int    `json:"WAL_WRITE_BUFFER_SIZE"`
 	WALSyncMode        string `json:"WAL_SYNC_MODE"`
 }
 
-func GetWalConfig() WalConfig {
-	var cfg WalConfig
+func Get() Config {
+	var cfg Config
 	if err := json.Unmarshal(walConfigData, &cfg); err != nil {
 		panic(fmt.Sprintf("failed to parse wal config file: %v", err))
 	}

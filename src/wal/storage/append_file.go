@@ -4,7 +4,8 @@ import (
 	"encoding/binary"
 	"fmt"
 	"io"
-	"nosqlEngine/src/wal"
+	"nosqlEngine/src/wal/config"
+	"nosqlEngine/src/wal/record"
 	"os"
 	"sync"
 )
@@ -24,7 +25,7 @@ type AppendFileStorage struct {
 }
 
 func NewAppendStorage() (AppendStorage, error) {
-	cfg := wal.GetWalConfig()
+	cfg := config.Get()
 	return NewAppendStorageInDir(WalDir(), cfg.WALSegmentSize, cfg.WALWriteBufferSize)
 }
 
@@ -111,14 +112,14 @@ func maxLSNInSegment(path string) (uint64, error) {
 	return maxLSN, nil
 }
 
-func (s *AppendFileStorage) Append(op wal.Op, key, value []byte) (uint64, error) {
+func (s *AppendFileStorage) Append(op record.Op, key, value []byte) (uint64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
 	lsn := s.nextLSN
 	s.nextLSN++
 
-	encoded, err := wal.EncodeRecord(op, key, value, lsn)
+	encoded, err := record.EncodeRecord(op, key, value, lsn)
 	if err != nil {
 		return 0, err
 	}
@@ -297,36 +298,36 @@ func openSegmentReader(path string) (*fileSegmentReader, error) {
 	return &fileSegmentReader{file: file}, nil
 }
 
-func (r *fileSegmentReader) Next() (wal.Record, error) {
+func (r *fileSegmentReader) Next() (record.Record, error) {
 	header := make([]byte, 8)
 	_, err := io.ReadFull(r.file, header)
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
-		return wal.Record{}, io.EOF
+		return record.Record{}, io.EOF
 	}
 	if err != nil {
-		return wal.Record{}, err
+		return record.Record{}, err
 	}
 
 	recordLen := int(binary.LittleEndian.Uint32(header[recordLenOffset:8]))
 	if recordLen < 8 {
-		return wal.Record{}, io.EOF
+		return record.Record{}, io.EOF
 	}
 
 	recordBuf := make([]byte, recordLen)
 	copy(recordBuf, header)
 	_, err = io.ReadFull(r.file, recordBuf[8:recordLen])
 	if err == io.EOF || err == io.ErrUnexpectedEOF {
-		return wal.Record{}, io.EOF
+		return record.Record{}, io.EOF
 	}
 	if err != nil {
-		return wal.Record{}, err
+		return record.Record{}, err
 	}
 
-	record, err := wal.DecodeRecord(recordBuf)
+	rec, err := record.DecodeRecord(recordBuf)
 	if err != nil {
-		return wal.Record{}, io.EOF
+		return record.Record{}, io.EOF
 	}
-	return record, nil
+	return rec, nil
 }
 
 func (r *fileSegmentReader) Close() error {

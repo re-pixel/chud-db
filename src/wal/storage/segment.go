@@ -2,7 +2,7 @@ package storage
 
 import (
 	"fmt"
-	"nosqlEngine/src/wal"
+	"nosqlEngine/src/wal/config"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -18,7 +18,7 @@ func projectRoot() string {
 }
 
 func WalDir() string {
-	cfg := wal.GetWalConfig()
+	cfg := config.Get()
 	return filepath.Join(projectRoot(), cfg.WALDir)
 }
 

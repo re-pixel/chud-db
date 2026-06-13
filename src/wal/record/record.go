@@ -1,4 +1,4 @@
-package wal
+package record
 
 import (
 	"encoding/binary"

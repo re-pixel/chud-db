@@ -3,7 +3,7 @@ package storage
 import (
 	"bytes"
 	"io"
-	"nosqlEngine/src/wal"
+	"nosqlEngine/src/wal/record"
 	"os"
 	"testing"
 )
@@ -22,14 +22,14 @@ func newTestStorage(t *testing.T, segmentSize int64) AppendStorage {
 	return store
 }
 
-func readAllRecords(t *testing.T, store AppendStorage) []wal.Record {
+func readAllRecords(t *testing.T, store AppendStorage) []record.Record {
 	t.Helper()
 	segments, err := store.ListSegments()
 	if err != nil {
 		t.Fatalf("ListSegments failed: %v", err)
 	}
 
-	var records []wal.Record
+	var records []record.Record
 	for _, segment := range segments {
 		reader, err := store.OpenSegmentReader(segment.ID)
 		if err != nil {
@@ -56,7 +56,7 @@ func TestAppendAndSync(t *testing.T) {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
-	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key1"), []byte("value1")); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 	if err := store.Sync(); err != nil {
@@ -93,7 +93,7 @@ func TestSegmentRotation(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		key := []byte{byte('a' + i)}
 		value := []byte("value-with-enough-bytes-to-grow-segment")
-		if _, err := store.Append(wal.OpPut, key, value); err != nil {
+		if _, err := store.Append(record.OpPut, key, value); err != nil {
 			t.Fatalf("Append failed: %v", err)
 		}
 	}
@@ -116,7 +116,7 @@ func TestReplayOrdering(t *testing.T) {
 	for i := 0; i < 20; i++ {
 		key := []byte{byte('a' + i)}
 		value := []byte("value-with-enough-bytes-to-grow-segment")
-		if _, err := store.Append(wal.OpPut, key, value); err != nil {
+		if _, err := store.Append(record.OpPut, key, value); err != nil {
 			t.Fatalf("Append failed: %v", err)
 		}
 	}
@@ -142,10 +142,10 @@ func TestTornTailRecovery(t *testing.T) {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
-	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key1"), []byte("value1")); err != nil {
 		t.Fatalf("first Append failed: %v", err)
 	}
-	if _, err := store.Append(wal.OpPut, []byte("key2"), []byte("value2")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key2"), []byte("value2")); err != nil {
 		t.Fatalf("second Append failed: %v", err)
 	}
 	if err := store.Sync(); err != nil {
@@ -185,10 +185,10 @@ func TestCRCMismatch(t *testing.T) {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
-	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key1"), []byte("value1")); err != nil {
 		t.Fatalf("first Append failed: %v", err)
 	}
-	if _, err := store.Append(wal.OpPut, []byte("key2"), []byte("value2")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key2"), []byte("value2")); err != nil {
 		t.Fatalf("second Append failed: %v", err)
 	}
 	if err := store.Sync(); err != nil {
@@ -229,7 +229,7 @@ func TestReopenWithEmptyLastSegment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
-	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key1"), []byte("value1")); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 	if err := store.Sync(); err != nil {
@@ -249,7 +249,7 @@ func TestReopenWithEmptyLastSegment(t *testing.T) {
 	}
 	defer reopened.Close()
 
-	lsn, err := reopened.Append(wal.OpPut, []byte("key2"), []byte("value2"))
+	lsn, err := reopened.Append(record.OpPut, []byte("key2"), []byte("value2"))
 	if err != nil {
 		t.Fatalf("Append after reopen failed: %v", err)
 	}
@@ -261,7 +261,7 @@ func TestReopenWithEmptyLastSegment(t *testing.T) {
 func TestPurge(t *testing.T) {
 	store := newTestStorage(t, 1<<20)
 
-	if _, err := store.Append(wal.OpPut, []byte("key1"), []byte("value1")); err != nil {
+	if _, err := store.Append(record.OpPut, []byte("key1"), []byte("value1")); err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 	if err := store.Sync(); err != nil {
@@ -284,7 +284,7 @@ func TestPurge(t *testing.T) {
 		t.Fatalf("expected no records after purge, got %d", len(records))
 	}
 
-	lsn, err := store.Append(wal.OpPut, []byte("key2"), []byte("value2"))
+	lsn, err := store.Append(record.OpPut, []byte("key2"), []byte("value2"))
 	if err != nil {
 		t.Fatalf("Append after purge failed: %v", err)
 	}

@@ -1,6 +1,6 @@
 package storage
 
-import "nosqlEngine/src/wal"
+import "nosqlEngine/src/wal/record"
 
 type SegmentInfo struct {
 	ID   uint64
@@ -8,7 +8,7 @@ type SegmentInfo struct {
 }
 
 type AppendStorage interface {
-	Append(op wal.Op, key, value []byte) (lsn uint64, err error)
+	Append(op record.Op, key, value []byte) (lsn uint64, err error)
 	Sync() error
 	RotateIfNeeded() error
 	ActiveSegment() SegmentInfo
@@ -20,5 +20,5 @@ type AppendStorage interface {
 }
 
 type SegmentReader interface {
-	Next() (wal.Record, error)
+	Next() (record.Record, error)
 }
