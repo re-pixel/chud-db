@@ -9,7 +9,7 @@ import (
 	r "nosqlEngine/src/service/retriever"
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
-	m "nosqlEngine/src/storage/memtable"
+	m "nosqlEngine/src/memtable"
 	"nosqlEngine/src/utils"
 	"testing"
 

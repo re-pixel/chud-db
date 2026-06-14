@@ -9,7 +9,7 @@ import (
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
 	"nosqlEngine/src/service/user_limiter"
-	"nosqlEngine/src/storage/memtable"
+	"nosqlEngine/src/memtable"
 	"nosqlEngine/src/utils"
 	"nosqlEngine/src/wal"
 	"nosqlEngine/src/wal/record"
