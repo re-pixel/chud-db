@@ -6,7 +6,12 @@ var factoryConfig = appconfig.GetConfig()
 
 const defaultBTreeOrder = 3
 
+// NewMemtable returns a thread-safe memtable selected by MEMTABLE_TYPE in config.
 func NewMemtable() Memtable {
+	return NewSyncMemtable(newMemtableImpl())
+}
+
+func newMemtableImpl() Memtable {
 	switch factoryConfig.MemtableType {
 	case "skiplist":
 		levels := factoryConfig.SkipListLevels

@@ -139,6 +139,9 @@ func (n *bTreeNode) insertNonFull(key, value string, order int) {
 
 func (n *bTreeNode) splitChild(i, order int) {
 	full := n.children[i]
+	promotedKey := full.keys[order-1]
+	promotedVal := full.values[order-1]
+
 	sibling := &bTreeNode{isLeaf: full.isLeaf}
 	sibling.keys = append(sibling.keys, full.keys[order:]...)
 	sibling.values = append(sibling.values, full.values[order:]...)
@@ -157,8 +160,8 @@ func (n *bTreeNode) splitChild(i, order int) {
 	n.values = append(n.values, "")
 	copy(n.keys[i+1:], n.keys[i:])
 	copy(n.values[i+1:], n.values[i:])
-	n.keys[i] = full.keys[order-1]
-	n.values[i] = full.values[order-1]
+	n.keys[i] = promotedKey
+	n.values[i] = promotedVal
 }
 
 func (t *BTree) ToRaw() []key_value.KeyValue {
