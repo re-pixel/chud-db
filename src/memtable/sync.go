@@ -43,8 +43,6 @@ func (s *syncMemtable) ToRaw() []key_value.KeyValue {
 }
 
 func (s *syncMemtable) GetSize() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
 	return s.inner.GetSize()
 }
 

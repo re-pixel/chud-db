@@ -3,6 +3,7 @@ package memtable
 import (
 	appconfig "nosqlEngine/src/config"
 	"nosqlEngine/src/models/key_value"
+	"sync/atomic"
 )
 
 var bTreeConfig = appconfig.GetConfig()
@@ -17,7 +18,7 @@ type bTreeNode struct {
 type BTree struct {
 	root     *bTreeNode
 	order    int
-	byteSize int
+	byteSize atomic.Int64
 }
 
 func NewBTree(order int) *BTree {
@@ -31,7 +32,7 @@ func NewBTree(order int) *BTree {
 }
 
 func (t *BTree) GetSize() int {
-	return t.byteSize
+	return int(t.byteSize.Load())
 }
 
 func (t *BTree) Get(key string) (string, bool) {
@@ -57,12 +58,12 @@ func (n *bTreeNode) search(key string) (string, bool) {
 
 func (t *BTree) Add(key, value string) bool {
 	if old, ok := t.lookup(key); ok {
-		t.byteSize += entryBytes(key, value) - entryBytes(key, old)
+		t.byteSize.Add(int64(entryBytes(key, value) - entryBytes(key, old)))
 		t.root.updateExisting(key, value)
 		return true
 	}
 
-	t.byteSize += entryBytes(key, value)
+	t.byteSize.Add(int64(entryBytes(key, value)))
 
 	root := t.root
 	if len(root.keys) == 2*t.order-1 {
@@ -184,6 +185,6 @@ func (n *bTreeNode) collect(pairs *[]key_value.KeyValue) {
 
 func (t *BTree) Clear() bool {
 	t.root = &bTreeNode{isLeaf: true}
-	t.byteSize = 0
+	t.byteSize.Store(0)
 	return true
 }

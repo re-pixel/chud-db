@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	appconfig "nosqlEngine/src/config"
 	"nosqlEngine/src/models/key_value"
+	"sync/atomic"
 )
 
 var skipListConfig = appconfig.GetConfig()
@@ -18,7 +19,7 @@ type skipNode struct {
 type SkipList struct {
 	head     *skipNode
 	maxLevel int
-	byteSize int
+	byteSize atomic.Int64
 	rng      *rand.Rand
 }
 
@@ -38,7 +39,7 @@ func (s *SkipList) reset() {
 		curr.down = &skipNode{}
 		curr = curr.down
 	}
-	s.byteSize = 0
+	s.byteSize.Store(0)
 }
 
 func (s *SkipList) bottom() *skipNode {
@@ -50,7 +51,7 @@ func (s *SkipList) bottom() *skipNode {
 }
 
 func (s *SkipList) GetSize() int {
-	return s.byteSize
+	return int(s.byteSize.Load())
 }
 
 func (s *SkipList) Get(key string) (string, bool) {
@@ -72,7 +73,7 @@ func (s *SkipList) Get(key string) (string, bool) {
 
 func (s *SkipList) Add(key, value string) bool {
 	if old, ok := s.lookupValue(key); ok {
-		s.byteSize += entryBytes(key, value) - entryBytes(key, old)
+		s.byteSize.Add(int64(entryBytes(key, value) - entryBytes(key, old)))
 		s.updateValue(key, value)
 		return true
 	}
@@ -90,7 +91,7 @@ func (s *SkipList) Add(key, value string) bool {
 		nodes[i+1].down = nodes[i]
 	}
 
-	s.byteSize += entryBytes(key, value)
+	s.byteSize.Add(int64(entryBytes(key, value)))
 	return true
 }
 
