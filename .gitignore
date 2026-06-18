@@ -1,11 +1,7 @@
 # Ignore Visual Studio Code files
 .vscode/
 *.code-workspace
-/data/wal/
-/data/sstable/lvl0/
-/data/sstable/lvl1/
-/data/sstable/lvl2/
-/data/sstable/lvl3/
+/data/
 .idea/
 .DS_Store
 
