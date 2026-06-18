@@ -35,7 +35,7 @@ func (q *immutableQueue) Push(im *memtable.ImmutableMemtable) {
 	q.cond.Broadcast()
 }
 
-func (q *immutableQueue) Pop() *memtable.ImmutableMemtable {
+func (q *immutableQueue) Peek() *memtable.ImmutableMemtable {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for len(q.items) == 0 && !q.closed {
@@ -44,10 +44,16 @@ func (q *immutableQueue) Pop() *memtable.ImmutableMemtable {
 	if len(q.items) == 0 {
 		return nil
 	}
-	im := q.items[0]
-	q.items = q.items[1:]
-	q.cond.Broadcast()
-	return im
+	return q.items[0]
+}
+
+func (q *immutableQueue) PopFront() {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	if len(q.items) > 0 {
+		q.items = q.items[1:]
+		q.cond.Broadcast()
+	}
 }
 
 func (q *immutableQueue) Snapshot() []*memtable.ImmutableMemtable {
