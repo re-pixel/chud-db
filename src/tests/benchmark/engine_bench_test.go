@@ -45,8 +45,6 @@ func setupBenchEngine(b *testing.B) (*engine.Engine, string) {
 	}
 	eng.Start()
 	b.Cleanup(func() {
-		eng.WaitFlushIdle()
-		time.Sleep(200 * time.Millisecond)
 		if err := eng.Shut(); err != nil {
 			b.Errorf("Shut: %v", err)
 		}
@@ -92,7 +90,7 @@ func BenchmarkPutSequential(b *testing.B) {
 		if err := eng.Write(benchUser, benchKey("put", i), benchValue, false); err != nil {
 			b.Fatalf("Write: %v", err)
 		}
-		eng.WaitFlushIdle()
+		eng.WaitForPendingFlushes()
 	}
 	reportOpsPerSec(b, "puts/sec")
 }
@@ -152,7 +150,7 @@ func BenchmarkGetSSTable(b *testing.B) {
 			b.Fatalf("preload Write: %v", err)
 		}
 	}
-	eng.WaitFlushIdle()
+	eng.WaitForPendingFlushes()
 	waitForSSTable(b, dir)
 
 	// Clear hot keys from memtable so reads fall through to SSTables.
@@ -189,7 +187,7 @@ func BenchmarkDeleteSequential(b *testing.B) {
 		if err := eng.Write(benchUser, key, cfg.Tombstone, false); err != nil {
 			b.Fatalf("Delete Write: %v", err)
 		}
-		eng.WaitFlushIdle()
+		eng.WaitForPendingFlushes()
 	}
 	reportOpsPerSec(b, "deletes/sec")
 }
@@ -208,7 +206,7 @@ func BenchmarkMixedReadWrite(b *testing.B) {
 			if err := eng.Write(benchUser, lastKey, smallValue(), false); err != nil {
 				b.Fatalf("Write: %v", err)
 			}
-			eng.WaitFlushIdle()
+			eng.WaitForPendingFlushes()
 		} else {
 			got, found, err := eng.Read(benchUser, lastKey)
 			if err != nil {

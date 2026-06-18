@@ -37,11 +37,14 @@ func TestWritePathIntegration(t *testing.T) {
 		mt.Add(key, value)
 	}
 
+	// Capture the location before FlushMemtable resets the writer for the next flush.
+	writtenLocation := fileWriter.GetLocation()
+
 	// Write the memtable to disk via the parser and file writer
 	ssParser.FlushMemtable(mt.ToRaw())
 
 	// Read the file to verify the data
-	data, err := bm.ReadBlock(fileWriter.GetLocation(), 0, true)
+	data, err := bm.ReadBlock(writtenLocation, 0, true)
 	if err != nil {
 		t.Fatalf("Failed to read block: %v", err)
 	}

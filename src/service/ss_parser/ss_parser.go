@@ -36,6 +36,7 @@ func (ssParser *SSParserImpl) FlushMemtable(data []key_value.KeyValue) {
 	bt_pbf, _ := prefixFilter.SerializeToByteArray()
 	SerializeMetaData(ssParser.fileWriter.Write(nil, true, nil), bt_bf, merkleTree.GetRootBytes(), len(data), ssParser.fileWriter, initialSummaryOffset, bt_pbf)
 
-	// Reset the file writer for the next flush
+	// Atomically publish the completed SSTable and prepare for the next flush.
+	ssParser.fileWriter.Commit()         //nolint:errcheck
 	ssParser.fileWriter.ResetFileWriter("")
 }

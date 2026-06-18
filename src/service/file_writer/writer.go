@@ -6,6 +6,7 @@ import (
 	"nosqlEngine/src/utils"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/google/uuid"
 )
@@ -45,8 +46,27 @@ func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name stri
 	}
 }
 
+// generateFileName returns a path with a .tmp extension. The file is only
+// renamed to .db by Commit() once all blocks have been written, ensuring
+// concurrent readers never observe a partially-written SSTable.
 func generateFileName(level int) string {
-	return fmt.Sprintf("sstable/lvl%d/sstable_%s.db", level, uuid.New().String())
+	return fmt.Sprintf("sstable/lvl%d/sstable_%s.db.tmp", level, uuid.New().String())
+}
+
+// Commit atomically renames the in-progress .tmp file to the final .db path.
+// After this call the SSTable becomes visible to readers.
+// If the location does not end with ".tmp" (e.g. a test supplied a .db path
+// directly) this is a safe no-op.
+func (fw *FileWriter) Commit() error {
+	if !strings.HasSuffix(fw.location, ".tmp") {
+		return nil
+	}
+	finalPath := fw.location[:len(fw.location)-len(".tmp")]
+	if err := os.Rename(fw.location, finalPath); err != nil {
+		return err
+	}
+	fw.location = finalPath
+	return nil
 }
 
 func (fw *FileWriter) Write(data []byte, sectionEnd bool, size []byte) int {

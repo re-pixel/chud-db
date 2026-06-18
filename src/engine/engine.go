@@ -19,15 +19,16 @@ var CONFIG = config.GetConfig()
 
 type Engine struct {
 	userLimiter    *user_limiter.UserLimiter
-	memtables      []memtable.Memtable
-	curr_mem_index int
+	activeMem      memtable.Memtable
+	activeMemMu    sync.RWMutex
+	immQueue       *immutableQueue
 	wal            *wal.WAL
 	ss_parser      ss_parser.SSParser
 	ss_compacter   *ss_compacter.SSCompacterST
 	block_manager  *block_manager.BlockManager
-	flush_lock     *sync.Mutex
 	writeCh        chan writeReq
 	writerWG       sync.WaitGroup
+	flusherWG      sync.WaitGroup
 	dataRoot       string
 	skipRateLimit  bool
 	skipCompaction bool
@@ -44,20 +45,18 @@ func NewEngine() *Engine {
 
 func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompaction bool) *Engine {
 	bm := block_manager.NewBlockManager()
-	memtableCount := CONFIG.MemtableCount
-	memtables := make([]memtable.Memtable, memtableCount)
-	for i := range memtableCount {
-		memtables[i] = memtable.NewMemtable()
+	maxImm := CONFIG.MaxImmutableCount
+	if maxImm < 1 {
+		maxImm = 3
 	}
 	return &Engine{
 		userLimiter:    user_limiter.NewUserLimiter(),
-		memtables:      memtables,
+		activeMem:      memtable.NewMemtable(),
+		immQueue:       newImmutableQueue(maxImm),
 		ss_parser:      ss_parser.NewSSParser(file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "", dataRoot)),
 		ss_compacter:   ss_compacter.NewSSCompacterST(),
 		wal:            walInstance,
-		curr_mem_index: 0,
 		block_manager:  bm,
-		flush_lock:     &sync.Mutex{},
 		writeCh:        make(chan writeReq, 256),
 		dataRoot:       dataRoot,
 		skipRateLimit:  skipRateLimit,
@@ -65,12 +64,24 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 	}
 }
 
-func (engine *Engine) SetNextMemtable() {
-	engine.curr_mem_index = (engine.curr_mem_index + 1) % CONFIG.MemtableCount
+func (engine *Engine) loadActiveMem() memtable.Memtable {
+	engine.activeMemMu.RLock()
+	defer engine.activeMemMu.RUnlock()
+	return engine.activeMem
 }
 
-func (engine *Engine) checkIfMemtableFull() bool {
-	return engine.memtables[engine.curr_mem_index].GetSize() >= CONFIG.MemtableSize
+func (engine *Engine) WaitForPendingFlushes() {
+	for _, im := range engine.immQueue.Snapshot() {
+		im.WaitFlushed()
+	}
+}
+
+func (engine *Engine) swapActiveMem(old memtable.Memtable) {
+	newMem := memtable.NewMemtable()
+	engine.activeMemMu.Lock()
+	engine.activeMem = newMem
+	engine.activeMemMu.Unlock()
+	old.Clear()
 }
 
 func (engine *Engine) Start() {
@@ -86,17 +97,13 @@ func (engine *Engine) Start() {
 		}
 		engine.applyWrite("", entry.Key, value, true)
 	}
+	engine.startFlusher()
 	engine.startWriter()
 }
 
 func (engine *Engine) Shut() error {
 	engine.stopWriter()
-	engine.WaitFlushIdle()
+	engine.immQueue.Close()
+	engine.flusherWG.Wait()
 	return engine.wal.Flush()
-}
-
-// WaitFlushIdle blocks until any in-flight memtable flush completes.
-func (engine *Engine) WaitFlushIdle() {
-	engine.flush_lock.Lock()
-	defer engine.flush_lock.Unlock()
 }

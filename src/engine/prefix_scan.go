@@ -80,27 +80,34 @@ func (engine *Engine) PrefixScan(user string, prefix string, pageNum int, pageSi
 func (engine *Engine) findAllPrefixMatches(prefix string) (map[string]string, error) {
 	results := make(map[string]string)
 
-	// Scan through memtables
-	for _, mem := range engine.memtables {
-		for _, kv := range mem.ToRaw() {
+	// Scan active memtable then immutables newest-first.
+	// Keys recorded from a newer layer shadow older layers.
+	matchPrefix := func(key string) bool {
+		return len(key) >= len(prefix) && key[:len(prefix)] == prefix
+	}
+
+	for _, kv := range engine.loadActiveMem().ToRaw() {
+		if matchPrefix(kv.GetKey()) {
+			results[kv.GetKey()] = kv.GetValue()
+		}
+	}
+	for _, im := range engine.immQueue.Snapshot() {
+		for _, kv := range im.ToRaw() {
 			fmt.Println(kv.GetKey(), kv.GetValue())
-			if len(kv.GetKey()) >= len(prefix) && kv.GetKey()[:len(prefix)] == prefix {
-				results[kv.GetKey()] = kv.GetValue()
+			if matchPrefix(kv.GetKey()) {
+				if _, seen := results[kv.GetKey()]; !seen {
+					results[kv.GetKey()] = kv.GetValue()
+				}
 			}
 		}
 	}
 
-	// If not found in memtables, read from SSTables
-
 	mretriever := retriever.NewMultiRetriever(engine.block_manager)
-
 	retriever_results, err := mretriever.GetPrefixEntries(prefix)
 	fmt.Print(retriever_results, results)
-
 	if err != nil {
 		fmt.Print("Failed to retrieve results from SSTables")
 	}
-
 	for key, value := range retriever_results {
 		if _, exists := results[key]; !exists {
 			results[key] = value
