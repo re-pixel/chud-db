@@ -3,13 +3,16 @@ package user_limiter
 import (
 	"nosqlEngine/src/config"
 	"nosqlEngine/src/service/token_bucket"
+	"sync"
 )
 
 var CONFIG = config.GetConfig()
 
 type UserLimiter struct {
-	data   map[string]*token_bucket.TokenBucket
+	mu   sync.Mutex
+	data map[string]*token_bucket.TokenBucket
 }
+
 func NewUserLimiter() *UserLimiter {
 	return &UserLimiter{
 		data: make(map[string]*token_bucket.TokenBucket),
@@ -17,8 +20,13 @@ func NewUserLimiter() *UserLimiter {
 }
 
 func (ul *UserLimiter) CheckUserTokens(user string) (bool, error) {
-	if _, exists := ul.data[user]; !exists {
-		ul.data[user] = token_bucket.GetNewTokenBucket()
+	ul.mu.Lock()
+	bucket, exists := ul.data[user]
+	if !exists {
+		bucket = token_bucket.GetNewTokenBucket()
+		ul.data[user] = bucket
 	}
-	return ul.data[user].CheckTokens()
+	ul.mu.Unlock()
+
+	return bucket.CheckTokens()
 }

@@ -3,33 +3,36 @@ package token_bucket
 import (
 	"fmt"
 	"nosqlEngine/src/config"
+	"sync"
 	"time"
 )
 
 var CONFIG = config.GetConfig()
 
 type TokenBucket struct {
+	mu             sync.Mutex
 	currTokens     int
 	lastRefillTime int64
 }
 
-func GetNewTokenBucket() *TokenBucket{
+func GetNewTokenBucket() *TokenBucket {
 	return &TokenBucket{currTokens: CONFIG.MaxTokens, lastRefillTime: time.Now().Unix()}
 }
 
 func (tb *TokenBucket) CheckTokens() (bool, error) {
-	// Implement token checking logic here
-	curr_tokens := tb.currTokens
-	last_refill_time := tb.lastRefillTime
+	tb.mu.Lock()
+	defer tb.mu.Unlock()
+
 	now := time.Now().Unix()
-	elapsed_time := float64(now - last_refill_time)
-	new_tokens := int(elapsed_time * CONFIG.TokenRefillRate) // floor to int
-	curr_tokens = min(new_tokens+curr_tokens, CONFIG.MaxTokens)
-	
-	if curr_tokens < 1 {
+	elapsed := float64(now - tb.lastRefillTime)
+	refilled := int(elapsed * CONFIG.TokenRefillRate)
+	tokens := min(tb.currTokens+refilled, CONFIG.MaxTokens)
+
+	if tokens < 1 {
 		return false, fmt.Errorf("insufficient tokens")
 	}
-	tb.currTokens = curr_tokens - 1
+	tb.currTokens = tokens - 1
+	tb.lastRefillTime = now
 	return true, nil
 }
 
