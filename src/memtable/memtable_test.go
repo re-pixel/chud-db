@@ -1,8 +1,10 @@
 package memtable
 
 import (
+	"fmt"
 	"nosqlEngine/src/config"
 	"nosqlEngine/src/models/key_value"
+	"sync"
 	"testing"
 )
 
@@ -124,6 +126,63 @@ func TestSkipListGetMissingKeyDoesNotLoop(t *testing.T) {
 
 	if _, ok := mt.Get("missing"); ok {
 		t.Fatal("expected missing key")
+	}
+}
+
+func TestTakeSnapshot(t *testing.T) {
+	for _, impl := range implementations(t) {
+		t.Run(impl.name, func(t *testing.T) {
+			mt := impl.new()
+			mt.Add("a", "1")
+			mt.Add("b", "2")
+
+			snap := mt.TakeSnapshot()
+
+			if mt.GetSize() != 0 {
+				t.Fatalf("memtable not empty after TakeSnapshot; GetSize = %d", mt.GetSize())
+			}
+			if _, ok := mt.Get("a"); ok {
+				t.Fatal("key still present in memtable after TakeSnapshot")
+			}
+			if len(snap) != 2 {
+				t.Fatalf("snapshot len = %d, want 2", len(snap))
+			}
+		})
+	}
+}
+
+func TestTakeSnapshotIsAtomicUnderConcurrency(t *testing.T) {
+	for _, impl := range implementations(t) {
+		t.Run(impl.name, func(t *testing.T) {
+			mt := NewSyncMemtable(impl.new())
+			for i := 0; i < 20; i++ {
+				mt.Add(fmt.Sprintf("k%d", i), "v")
+			}
+
+			var wg sync.WaitGroup
+			wg.Add(2)
+
+			var snapLen int
+			go func() {
+				defer wg.Done()
+				snap := mt.TakeSnapshot()
+				snapLen = len(snap)
+			}()
+			go func() {
+				defer wg.Done()
+				mt.Get("k0")
+				mt.ToRaw()
+			}()
+
+			wg.Wait()
+			// After TakeSnapshot the memtable must be empty
+			if mt.GetSize() != 0 {
+				t.Fatalf("memtable not empty after concurrent TakeSnapshot; GetSize = %d", mt.GetSize())
+			}
+			if snapLen != 20 {
+				t.Fatalf("snapshot captured %d entries, want 20", snapLen)
+			}
+		})
 	}
 }
 

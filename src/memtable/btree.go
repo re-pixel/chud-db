@@ -188,3 +188,10 @@ func (t *BTree) Clear() bool {
 	t.byteSize.Store(0)
 	return true
 }
+
+func (t *BTree) TakeSnapshot() []key_value.KeyValue {
+	raw := t.ToRaw()
+	t.root = &bTreeNode{isLeaf: true}
+	t.byteSize.Store(0)
+	return raw
+}

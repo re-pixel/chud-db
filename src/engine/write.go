@@ -4,6 +4,8 @@ import (
 	"fmt"
 )
 
+// Write is the public API. It enqueues the operation and blocks until the
+// writer goroutine has applied it and durability is confirmed.
 func (engine *Engine) Write(user, key, value string, fromWal bool) error {
 	req := writeReq{
 		user:    user,
@@ -16,15 +18,17 @@ func (engine *Engine) Write(user, key, value string, fromWal bool) error {
 	return <-req.done
 }
 
+// applyWrite is called exclusively by the writer goroutine (and directly during
+// WAL replay before the writer starts). It is the sole mutator of engine state.
 func (engine *Engine) applyWrite(user, key, value string, fromWal bool) error {
+	if !fromWal {
+		engine.WaitFlushIdle()
+	}
+
 	if !fromWal && !engine.skipRateLimit {
 		if ok, err := engine.userLimiter.CheckUserTokens(user); !ok {
 			return fmt.Errorf("user %s is not allowed to write: %w", user, err)
 		}
-	}
-
-	if engine.checkIfMemtableFull() {
-		engine.WaitFlushIdle()
 	}
 
 	var lsn uint64
@@ -50,10 +54,7 @@ func (engine *Engine) applyWrite(user, key, value string, fromWal bool) error {
 	}
 
 	if writeMem.GetSize() >= CONFIG.MemtableSize && !fromWal {
-		flushData := writeMem.ToRaw()
-		engine.SetNextMemtable()
-
-		purgeWAL := engine.curr_mem_index == 0
+		flushData := writeMem.TakeSnapshot()
 
 		done := make(chan struct{})
 		go func() {
@@ -61,9 +62,7 @@ func (engine *Engine) applyWrite(user, key, value string, fromWal bool) error {
 			defer engine.flush_lock.Unlock()
 
 			engine.ss_parser.FlushMemtable(flushData)
-			if purgeWAL {
-				engine.wal.Purge()
-			}
+			engine.wal.Purge()
 			close(done)
 		}()
 

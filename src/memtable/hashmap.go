@@ -55,3 +55,10 @@ func (h *HashMap) Clear() bool {
 	h.byteSize.Store(0)
 	return true
 }
+
+func (h *HashMap) TakeSnapshot() []key_value.KeyValue {
+	raw := h.ToRaw()
+	h.data = make(map[string]string)
+	h.byteSize.Store(0)
+	return raw
+}

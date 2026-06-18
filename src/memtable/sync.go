@@ -51,3 +51,10 @@ func (s *syncMemtable) Clear() bool {
 	defer s.mu.Unlock()
 	return s.inner.Clear()
 }
+
+func (s *syncMemtable) TakeSnapshot() []key_value.KeyValue {
+	s.mu.Lock()
+	raw := s.inner.TakeSnapshot() // ToRaw + reset under a single lock acquisition
+	s.mu.Unlock()
+	return raw
+}

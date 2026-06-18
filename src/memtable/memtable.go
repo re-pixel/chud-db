@@ -8,6 +8,7 @@ type Memtable interface {
 	ToRaw() []key_value.KeyValue
 	GetSize() int
 	Clear() bool
+	TakeSnapshot() []key_value.KeyValue
 }
 
 func entryBytes(key, value string) int {

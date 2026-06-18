@@ -156,3 +156,9 @@ func (s *SkipList) Clear() bool {
 	s.reset()
 	return true
 }
+
+func (s *SkipList) TakeSnapshot() []key_value.KeyValue {
+	raw := s.ToRaw()
+	s.reset()
+	return raw
+}

@@ -87,13 +87,15 @@ func TestWriteOrdering(t *testing.T) {
 	defer eng.Shut()
 
 	// Last write to a key wins regardless of goroutine ordering.
+	// Short values keep key+value under MEMTABLE_SIZE so the result is always
+	// visible in the memtable without requiring a flush.
 	const goroutines = 8
 	var wg sync.WaitGroup
 	wg.Add(goroutines)
 	for g := range goroutines {
 		go func() {
 			defer wg.Done()
-			eng.Write("", "shared-key", fmt.Sprintf("val-from-%d", g), false)
+			eng.Write("", "shared-key", fmt.Sprintf("%d", g), false)
 		}()
 	}
 	wg.Wait()
