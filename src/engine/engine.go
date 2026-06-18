@@ -3,13 +3,12 @@ package engine
 import (
 	"fmt"
 	"nosqlEngine/src/config"
+	"nosqlEngine/src/memtable"
 	"nosqlEngine/src/service/block_manager"
 	"nosqlEngine/src/service/file_writer"
-	"nosqlEngine/src/service/retriever"
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
 	"nosqlEngine/src/service/user_limiter"
-	"nosqlEngine/src/memtable"
 	"nosqlEngine/src/utils"
 	"nosqlEngine/src/wal"
 	"nosqlEngine/src/wal/record"
@@ -25,9 +24,10 @@ type Engine struct {
 	wal            *wal.WAL
 	ss_parser      ss_parser.SSParser
 	ss_compacter   *ss_compacter.SSCompacterST
-	entryRetriever *retriever.EntryRetriever
 	block_manager  *block_manager.BlockManager
 	flush_lock     *sync.Mutex
+	writeCh        chan writeReq
+	writerWG       sync.WaitGroup
 	dataRoot       string
 	skipRateLimit  bool
 	skipCompaction bool
@@ -46,7 +46,7 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 	bm := block_manager.NewBlockManager()
 	memtableCount := CONFIG.MemtableCount
 	memtables := make([]memtable.Memtable, memtableCount)
-	for i := 0; i < memtableCount; i++ {
+	for i := range memtableCount {
 		memtables[i] = memtable.NewMemtable()
 	}
 	return &Engine{
@@ -54,11 +54,11 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 		memtables:      memtables,
 		ss_parser:      ss_parser.NewSSParser(file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "", dataRoot)),
 		ss_compacter:   ss_compacter.NewSSCompacterST(),
-		entryRetriever: retriever.NewEntryRetrieverInDir(bm, dataRoot),
 		wal:            walInstance,
 		curr_mem_index: 0,
 		block_manager:  bm,
 		flush_lock:     &sync.Mutex{},
+		writeCh:        make(chan writeReq, 256),
 		dataRoot:       dataRoot,
 		skipRateLimit:  skipRateLimit,
 		skipCompaction: skipCompaction,
@@ -84,13 +84,15 @@ func (engine *Engine) Start() {
 		if entry.Op == record.OpDelete {
 			value = CONFIG.Tombstone
 		}
-		engine.Write("", entry.Key, value, true)
+		engine.applyWrite("", entry.Key, value, true)
 	}
+	engine.startWriter()
 }
 
 func (engine *Engine) Shut() error {
-	engine.wal.Flush()
-	return nil
+	engine.stopWriter()
+	engine.WaitFlushIdle()
+	return engine.wal.Flush()
 }
 
 // WaitFlushIdle blocks until any in-flight memtable flush completes.

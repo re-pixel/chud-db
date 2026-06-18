@@ -98,9 +98,20 @@ func BenchmarkPutSequential(b *testing.B) {
 }
 
 func BenchmarkPutParallel(b *testing.B) {
-	// engine.Write mutates the memtable without synchronization; parallel PUT
-	// is covered at the WAL layer in BenchmarkWALAppendPutWaitDurableParallel.
-	b.Skip("engine.Write is not goroutine-safe; use src/wal WAL parallel benchmarks for group commit")
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("parallel-key-%d-%d", i, b.N)
+			if err := eng.Write(benchUser, key, benchValue, false); err != nil {
+				b.Errorf("Write: %v", err)
+			}
+			i++
+		}
+	})
+	reportOpsPerSec(b, "puts/sec")
 }
 
 func BenchmarkGetMemtableHit(b *testing.B) {
