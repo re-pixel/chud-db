@@ -1,7 +1,7 @@
 {
     "BLOCK_SIZE":40,
     "SUMMARY_STEP":3,
-    "TOMBSTONE": "<KURTCOBAIN!>",
+    "TOMBSTONE": "<DELETED!>",
     "TOKEN_REFILL_RATE": 0.1,
     "MAX_TOKEN": 1000,
     "MEMTABLE_TYPE": "hashmap",
@@ -17,5 +17,6 @@
     "MIN_PREFIX_LENGTH": 1,
     "MAX_PREFIX_LENGTH": 10,
     "SKIP_LIST_LEVELS": 4,
-    "CACHE_CAPCAITY": 10
+    "CACHE_CAPCAITY": 10,
+    "MAX_IMMUTABLE_COUNT": 3
 }

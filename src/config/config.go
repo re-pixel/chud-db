@@ -29,6 +29,7 @@ type Config struct {
 	SkipListLevels               int     `json:"SKIP_LIST_LEVELS"`
 	CompactionThreshold          int     `json:"COMPACTION_THRESHOLD"`
 	CacheCapacity                int     `json:"CACHE_CAPACITY"`
+	MaxImmutableCount            int     `json:"MAX_IMMUTABLE_COUNT"`
 }
 
 func GetConfig() Config {

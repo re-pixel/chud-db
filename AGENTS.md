@@ -92,7 +92,7 @@ README.md, CLI_USAGE.md  # Docs
 
 ## Configuration
 
-`src/config/config.json` is **embedded into the binary at compile time** via `//go:embed` (`src/config/config.go`). **Editing it requires a rebuild** to take effect. Current values are small (tuned for testing): `BLOCK_SIZE: 40`, `MEMTABLE_SIZE: 20`, `LSM_LEVELS: 2`, `COMPACTION_THRESHOLD: 2`, `TOMBSTONE: "<KURTCOBAIN!>"`.
+`src/config/config.json` is **embedded into the binary at compile time** via `//go:embed` (`src/config/config.go`). **Editing it requires a rebuild** to take effect. Current values are small (tuned for testing): `BLOCK_SIZE: 40`, `MEMTABLE_SIZE: 20`, `LSM_LEVELS: 2`, `COMPACTION_THRESHOLD: 2`, `TOMBSTONE: "<DELETED!>"`.
 
 ## Testing
 
