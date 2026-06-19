@@ -1,0 +1,9 @@
+---
+description: Workflow and code style preferences for this project
+alwaysApply: true
+---
+
+# Workflow
+
+- Never commit changes. Leave all changes unstaged for the user to review and commit.
+- Write comments only when the intent is non-obvious. Do not narrate what the code does, explain edge cases or constraints that the code itself cannot convey.
