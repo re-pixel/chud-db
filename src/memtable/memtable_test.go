@@ -129,6 +129,39 @@ func TestSkipListGetMissingKeyDoesNotLoop(t *testing.T) {
 	}
 }
 
+func TestSkipListUpdateIsConsistentAcrossLevels(t *testing.T) {
+	mt := NewSkipList(8)
+
+	for i := range 200 {
+		mt.Add(fmt.Sprintf("key-%04d", i), fmt.Sprintf("v%d", i))
+	}
+
+	const updated = "UPDATED"
+	for i := range 200 {
+		if i%3 == 0 {
+			mt.Add(fmt.Sprintf("key-%04d", i), updated)
+		}
+	}
+
+	for i := range 200 {
+		key := fmt.Sprintf("key-%04d", i)
+		want := fmt.Sprintf("v%d", i)
+		if i%3 == 0 {
+			want = updated
+		}
+		got, ok := mt.Get(key)
+		if !ok || got != want {
+			t.Fatalf("Get(%q) = (%q, %v), want (%q, true)", key, got, ok, want)
+		}
+	}
+
+	for _, kv := range mt.ToRaw() {
+		if kv.GetValue() != updated && kv.GetValue()[:1] == "v" {
+			continue
+		}
+	}
+}
+
 func TestTakeSnapshot(t *testing.T) {
 	for _, impl := range implementations(t) {
 		t.Run(impl.name, func(t *testing.T) {

@@ -17,10 +17,11 @@ type skipNode struct {
 }
 
 type SkipList struct {
-	head     *skipNode
-	maxLevel int
-	byteSize atomic.Int64
-	rng      *rand.Rand
+	head       *skipNode
+	bottomHead *skipNode
+	maxLevel   int
+	byteSize   atomic.Int64
+	rng        *rand.Rand
 }
 
 func NewSkipList(maxLevel int) *SkipList {
@@ -39,15 +40,8 @@ func (s *SkipList) reset() {
 		curr.down = &skipNode{}
 		curr = curr.down
 	}
+	s.bottomHead = curr // curr is now the bottom-level sentinel
 	s.byteSize.Store(0)
-}
-
-func (s *SkipList) bottom() *skipNode {
-	curr := s.head
-	for curr.down != nil {
-		curr = curr.down
-	}
-	return curr
 }
 
 func (s *SkipList) GetSize() int {
@@ -72,55 +66,31 @@ func (s *SkipList) Get(key string) (string, bool) {
 }
 
 func (s *SkipList) Add(key, value string) bool {
-	if old, ok := s.lookupValue(key); ok {
-		s.byteSize.Add(int64(entryBytes(key, value) - entryBytes(key, old)))
-		s.updateValue(key, value)
+	lefts := s.findInsertPath(key)
+
+	if existing := lefts[0].right; existing != nil && existing.key == key {
+		diff := int64(entryBytes(key, value) - entryBytes(key, existing.value))
+		for i := range s.maxLevel {
+			if n := lefts[i].right; n != nil && n.key == key {
+				n.value = value
+			}
+		}
+		s.byteSize.Add(diff)
 		return true
 	}
 
 	level := s.randomLevel()
-	lefts := s.findInsertPath(key)
-
 	nodes := make([]*skipNode, level)
-	for i := 0; i < level; i++ {
-		left := lefts[i]
-		nodes[i] = &skipNode{key: key, value: value, right: left.right}
-		left.right = nodes[i]
-	}
-	for i := 0; i < level-1; i++ {
-		nodes[i+1].down = nodes[i]
+	for i := range level {
+		nodes[i] = &skipNode{key: key, value: value, right: lefts[i].right}
+		lefts[i].right = nodes[i]
 	}
 
+	for i := 1; i < level; i++ {
+		nodes[i].down = nodes[i-1]
+	}
 	s.byteSize.Add(int64(entryBytes(key, value)))
 	return true
-}
-
-func (s *SkipList) lookupValue(key string) (string, bool) {
-	curr := s.head
-	for curr != nil {
-		for curr.right != nil && curr.right.key < key {
-			curr = curr.right
-		}
-		if curr.right != nil && curr.right.key == key {
-			return curr.right.value, true
-		}
-		curr = curr.down
-	}
-	return "", false
-}
-
-func (s *SkipList) updateValue(key, value string) {
-	curr := s.head
-	for curr != nil {
-		walk := curr
-		for walk != nil {
-			if walk.key == key {
-				walk.value = value
-			}
-			walk = walk.right
-		}
-		curr = curr.down
-	}
 }
 
 func (s *SkipList) findInsertPath(key string) []*skipNode {
@@ -146,7 +116,7 @@ func (s *SkipList) randomLevel() int {
 
 func (s *SkipList) ToRaw() []key_value.KeyValue {
 	ret := make([]key_value.KeyValue, 0)
-	for node := s.bottom().right; node != nil; node = node.right {
+	for node := s.bottomHead.right; node != nil; node = node.right {
 		ret = append(ret, key_value.NewKeyValue(node.key, node.value))
 	}
 	return ret
