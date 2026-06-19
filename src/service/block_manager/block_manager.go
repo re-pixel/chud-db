@@ -56,7 +56,6 @@ func (bm *BlockManager) ReadBlock(location string, blockNumber int, direction bo
 	} else {
 		fileInfo, err := os.Stat(location)
 		if err != nil {
-			fmt.Println("Error getting file info:", err, " for forwardBlockNumber:", forwardBlockNumber)
 			return nil, err
 		}
 		totalBlocks := int(fileInfo.Size()) / CONFIG.BlockSize
@@ -66,10 +65,9 @@ func (bm *BlockManager) ReadBlock(location string, blockNumber int, direction bo
 		forwardBlockNumber = totalBlocks - 1 - blockNumber
 	}
 
-	// if data, err := bm.lruCache.Get(location, forwardBlockNumber); err == nil {
-	// 	fmt.Println("Cache hit for block:", forwardBlockNumber)
-	// 	return data, nil
-	// }
+	if data, ok := bm.lruCache.Get(location, forwardBlockNumber); ok {
+		return data, nil
+	}
 
 	file, err := os.Open(location)
 	if err != nil {
@@ -77,18 +75,18 @@ func (bm *BlockManager) ReadBlock(location string, blockNumber int, direction bo
 	}
 	defer file.Close()
 
-	var offset int64
 	fileInfo, err := file.Stat()
 	if err != nil {
 		return nil, err
 	}
 
-	if direction { // true: read from start
+	var offset int64
+	if direction {
 		offset = int64(CONFIG.BlockSize * blockNumber)
 		if offset >= fileInfo.Size() {
 			return nil, io.EOF
 		}
-	} else { // false: read from end
+	} else {
 		totalBlocks := int(fileInfo.Size()) / CONFIG.BlockSize
 		if blockNumber >= totalBlocks {
 			return nil, io.EOF
@@ -108,13 +106,12 @@ func (bm *BlockManager) ReadBlock(location string, blockNumber int, direction bo
 	if err != nil {
 		return nil, err
 	}
-
 	if n == 0 {
 		return nil, io.EOF
 	}
 
 	data := buf[:n]
-	//bm.lruCache.Put(location, forwardBlockNumber, data)
+	bm.lruCache.Put(location, forwardBlockNumber, data)
 	return data, nil
 }
 
