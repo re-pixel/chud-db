@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -36,6 +37,48 @@ func TestBenchEngineUsesIsolatedDirs(t *testing.T) {
 			t.Fatalf("expected sstable level dir %s: %v", levelDir, err)
 		}
 	}
+}
+
+func TestGracefulShutdownFlushesActiveMem(t *testing.T) {
+	benchDir := t.TempDir()
+	eng, err := NewBenchEngine(benchDir)
+	if err != nil {
+		t.Fatalf("NewBenchEngine: %v", err)
+	}
+	eng.Start()
+
+	for _, pair := range [][2]string{{"k1", "v1"}, {"k2", "v2"}} {
+		if err := eng.Write("", pair[0], pair[1], false); err != nil {
+			t.Fatalf("Write(%q): %v", pair[0], err)
+		}
+	}
+
+	sstDir := filepath.Join(benchDir, "sstable", "lvl0")
+	if hasDBFile(t, sstDir) {
+		t.Fatal("expected no SSTable before Shut, but found one")
+	}
+
+	if err := eng.Shut(); err != nil {
+		t.Fatalf("Shut: %v", err)
+	}
+
+	if !hasDBFile(t, sstDir) {
+		t.Fatal("Shut did not flush active memtable: no .db file found in sstable/lvl0")
+	}
+}
+
+func hasDBFile(t *testing.T, dir string) bool {
+	t.Helper()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", dir, err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".db") {
+			return true
+		}
+	}
+	return false
 }
 
 func TestBenchEngineSkipsRateLimit(t *testing.T) {

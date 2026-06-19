@@ -101,8 +101,19 @@ func (engine *Engine) Start() {
 	engine.startWriter()
 }
 
+func (engine *Engine) drainActiveMem() {
+	mem := engine.loadActiveMem()
+	if mem.GetSize() == 0 {
+		return
+	}
+	im := memtable.NewImmutableMemtable(mem.ToRaw())
+	engine.immQueue.Push(im)
+	engine.swapActiveMem(mem)
+}
+
 func (engine *Engine) Shut() error {
 	engine.stopWriter()
+	engine.drainActiveMem()
 	engine.immQueue.Close()
 	engine.flusherWG.Wait()
 	return engine.wal.Flush()
