@@ -142,6 +142,6 @@ func (bm *BlockManager) ClearCache() {
 }
 
 func (bm *BlockManager) IsCached(location string, blockNumber int) bool {
-	_, err := bm.lruCache.Get(location, blockNumber)
-	return err == nil
+	_, ok := bm.lruCache.Get(location, blockNumber)
+	return ok
 }

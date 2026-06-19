@@ -21,21 +21,11 @@ func NewBlockKey(blockNum int, filename string) BlockKey {
 }
 
 func NewNode(data []byte, blockKey BlockKey) *Block {
-	return &Block{
-		data:     data,
-		BlockKey: blockKey,
-		next:     nil,
-		prev:     nil,
-	}
+	return &Block{data: data, BlockKey: blockKey}
 }
 
-func (n *Block) Get() []byte {
-	return n.data
-}
-
-func (n *Block) Set(data []byte) {
-	n.data = data
-}
+func (n *Block) Get() []byte { return n.data }
+func (n *Block) Set(data []byte) { n.data = data }
 
 type DoublyLinkedList struct {
 	head   *Block
@@ -47,183 +37,49 @@ func NewDoublyLinkedList() *DoublyLinkedList {
 	return &DoublyLinkedList{}
 }
 
-func (list *DoublyLinkedList) Front() *Block {
-	return list.head
-}
+func (l *DoublyLinkedList) Front() *Block      { return l.head }
+func (l *DoublyLinkedList) Back() *Block       { return l.tail }
+func (l *DoublyLinkedList) ListLength() int    { return l.length }
 
-func (list *DoublyLinkedList) Back() *Block {
-	return list.tail
-}
-
-func (list *DoublyLinkedList) Display() {
-
-	if list.head == nil {
-		fmt.Printf("No Data Present in Linked List.\n")
+func (l *DoublyLinkedList) InsertBeginning(n *Block) {
+	n.prev = nil
+	n.next = l.head
+	if l.head != nil {
+		l.head.prev = n
 	} else {
-		temp := list.head
-		for temp != nil {
-			fmt.Printf("%v -> ", temp.data)
-			temp = temp.next
-		}
-		fmt.Println("END")
+		l.tail = n
 	}
+	l.head = n
+	l.length++
 }
 
-func (list *DoublyLinkedList) ListLength() int {
-	return list.length
-}
-
-func (list *DoublyLinkedList) InsertBeginning(n *Block) {
-
-	if list.head == nil {
-		list.head = n
-		list.tail = n
-		n.prev = nil
-		n.next = nil
-	} else {
-		list.head.prev = n
-		n.next = list.head
-		list.head = n
-	}
-	list.length++
-}
-
-func (list *DoublyLinkedList) InsertEnd(n *Block) {
-
-	if list.head == nil {
-		list.InsertBeginning(n)
-	} else {
-		n.prev = list.tail
-		list.tail.next = n
-		list.tail = n
-		list.length++
-	}
-}
-
-func (list *DoublyLinkedList) InsertAtPosition(n *Block, pos int) {
-
-	if pos >= list.length {
-		fmt.Printf("Size Exceeding\n")
-	} else {
-		if pos == 0 {
-			list.InsertBeginning(n)
-		} else if pos == -1 {
-			list.InsertEnd(n)
-		} else {
-			temp := list.head
-			index := 0
-			for index < pos-1 {
-				temp = temp.next
-				index++
-			}
-			// fmt.Println(temp.data)
-			temp.next.prev = n
-			n.next = temp.next
-			n.prev = temp
-			temp.next = n
-			list.length++
-		}
-	}
-
-}
-
-func (list *DoublyLinkedList) DeleteBegining() {
-
-	if list.head == nil {
-		fmt.Printf("Empty Linked List\n")
-	} else {
-		if list.length == 1 {
-			list.head = nil
-			list.tail = nil
-		} else {
-			list.head = list.head.next
-			list.head.prev = nil
-		}
-		list.length--
-	}
-}
-
-func (list *DoublyLinkedList) DeleteEnd() {
-
-	if list.head == nil {
-		fmt.Printf("Empty Linked List\n")
-	} else {
-		if list.length == 1 {
-			list.head = nil
-			list.tail = nil
-		} else {
-			list.tail = list.tail.prev
-			list.tail.next = nil
-		}
-		list.length--
-	}
-
-}
-
-func (list *DoublyLinkedList) DeleteFromPosition(pos int) {
-
-	if pos >= list.length {
-		fmt.Printf("Size Exceeding\n")
-	} else {
-		if pos == 0 {
-			list.DeleteBegining()
-		} else if pos == -1 {
-			list.DeleteEnd()
-		} else {
-			temp := list.head
-			index := 0
-			for index < pos {
-				temp = temp.next
-				index++
-			}
-
-			if temp == list.tail {
-				list.DeleteEnd()
-			} else {
-				temp.next.prev = temp.prev
-				temp.prev.next = temp.next
-				list.length--
-			}
-		}
-	}
-
-}
-
-func (list *DoublyLinkedList) Delete() {
-
-	if list.head != nil {
-		temp := list.head
-		for temp.next != nil {
-			temp.prev = nil
-			temp = temp.next
-		}
-		list.head = nil
-		list.length = 0
-	}
-
-}
-
-func (list *DoublyLinkedList) View() {
-	fmt.Println(list.head.data)
-	fmt.Println(list.tail.data)
-	fmt.Println(list.tail.prev.data)
-}
-
-func (dll *DoublyLinkedList) MoveToFront(node *Block) {
-	if node == dll.head {
+func (l *DoublyLinkedList) DeleteEnd() {
+	if l.tail == nil {
 		return
 	}
+	if l.length == 1 {
+		l.head = nil
+		l.tail = nil
+	} else {
+		l.tail = l.tail.prev
+		l.tail.next = nil
+	}
+	l.length--
+}
 
-	if node == dll.tail {
-		dll.tail = node.prev
-		dll.tail.next = nil
+func (l *DoublyLinkedList) MoveToFront(node *Block) {
+	if node == l.head {
+		return
+	}
+	if node == l.tail {
+		l.tail = node.prev
+		l.tail.next = nil
 	} else {
 		node.prev.next = node.next
 		node.next.prev = node.prev
 	}
-
-	node.next = dll.head
 	node.prev = nil
-	dll.head.prev = node
-	dll.head = node
+	node.next = l.head
+	l.head.prev = node
+	l.head = node
 }

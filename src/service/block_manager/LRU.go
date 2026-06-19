@@ -2,77 +2,85 @@ package block_manager
 
 import (
 	"fmt"
+	"sync"
+
 	cfg "nosqlEngine/src/config"
 	doublyll "nosqlEngine/src/models/doubly_ll"
 )
 
 type LRUCache struct {
+	mu       sync.Mutex
 	capacity int
 	cache    map[doublyll.BlockKey]*doublyll.Block
 	lruList  *doublyll.DoublyLinkedList
-	evicted  *EvictedBlock
-}
-
-type EvictedBlock struct {
-	blockKey doublyll.BlockKey
-	data     []byte
 }
 
 func NewLRUCache() *LRUCache {
-	capacity := cfg.GetConfig().CacheCapacity
 	return &LRUCache{
-		capacity: capacity,
+		capacity: cfg.GetConfig().CacheCapacity,
 		cache:    make(map[doublyll.BlockKey]*doublyll.Block),
 		lruList:  doublyll.NewDoublyLinkedList(),
-		evicted:  nil,
 	}
 }
 
-func (c *LRUCache) Put(filePath string, blockID int, data []byte) error {
+func (c *LRUCache) Put(filePath string, blockID int, data []byte) {
+	if c.capacity <= 0 {
+		return
+	}
 	key := doublyll.NewBlockKey(blockID, filePath)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	if elem, found := c.cache[key]; found {
-		c.lruList.MoveToFront(elem)
 		elem.Set(data)
-		return nil
-	}
-
-	newBlock := doublyll.NewNode(data, key)
-	c.lruList.InsertBeginning(newBlock)
-	c.cache[key] = newBlock
-
-	if c.lruList.ListLength() > c.capacity {
-		c.evict()
-	}
-	return nil
-}
-
-func (c *LRUCache) evict() {
-	elem := c.lruList.Back()
-	if elem == nil {
+		c.lruList.MoveToFront(elem)
 		return
 	}
 
-	block := elem
-	c.evicted = &EvictedBlock{block.BlockKey, block.Get()}
-	delete(c.cache, block.BlockKey)
+	node := doublyll.NewNode(data, key)
+	c.lruList.InsertBeginning(node)
+	c.cache[key] = node
+
+	if c.lruList.ListLength() > c.capacity {
+		c.evictLocked()
+	}
+}
+
+func (c *LRUCache) Get(filePath string, blockID int) ([]byte, bool) {
+	if c.capacity <= 0 {
+		return nil, false
+	}
+	key := doublyll.NewBlockKey(blockID, filePath)
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if elem, found := c.cache[key]; found {
+		c.lruList.MoveToFront(elem)
+		return elem.Get(), true
+	}
+	return nil, false
+}
+
+func (c *LRUCache) evictLocked() {
+	tail := c.lruList.Back()
+	if tail == nil {
+		return
+	}
+	delete(c.cache, tail.BlockKey)
 	c.lruList.DeleteEnd()
 }
 
-func (c *LRUCache) Get(filePath string, blockID int) ([]byte, error) {
-	key := doublyll.NewBlockKey(blockID, filePath)
-	fmt.Print("Fetching block from cache:", key)
-	if elem, found := c.cache[key]; found {
-		c.lruList.MoveToFront(elem)
-		return elem.Get(), nil
-	}
-	return nil, fmt.Errorf("block not found")
+func (c *LRUCache) Len() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.lruList.ListLength()
 }
 
-func (c *LRUCache) GetEvictedBlock() (doublyll.BlockKey, []byte) {
-	if c.evicted == nil {
-		return 0, nil
-	}
-	blockKey, data := c.evicted.blockKey, c.evicted.data
-	c.evicted = nil
-	return blockKey, data
+// String for debugging only.
+func (c *LRUCache) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return fmt.Sprintf("LRUCache{capacity:%d, len:%d}", c.capacity, c.lruList.ListLength())
 }
