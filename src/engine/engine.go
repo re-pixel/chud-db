@@ -85,17 +85,16 @@ func (engine *Engine) swapActiveMem(old memtable.Memtable) {
 }
 
 func (engine *Engine) Start() {
-	recoveredEntries, err := engine.wal.Replay()
-	if err != nil {
-		fmt.Println("Error replaying WAL:", err)
-		return
-	}
-	for _, entry := range recoveredEntries {
+	err := engine.wal.ReplayFunc(func(entry wal.Entry) error {
 		value := entry.Value
 		if entry.Op == record.OpDelete {
 			value = CONFIG.Tombstone
 		}
-		engine.applyWrite("", entry.Key, value, true)
+		return engine.applyWrite("", entry.Key, value, true)
+	})
+	if err != nil {
+		fmt.Println("Error replaying WAL:", err)
+		return
 	}
 	engine.startFlusher()
 	engine.startWriter()

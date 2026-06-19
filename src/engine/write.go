@@ -50,11 +50,24 @@ func (engine *Engine) applyWrite(user, key, value string, fromWal bool) error {
 		}
 	}
 
+	if fromWal && writeMem.GetSize() >= CONFIG.MemtableSize {
+		engine.replayFlush(writeMem)
+		return nil
+	}
+
 	if !fromWal && writeMem.GetSize() >= CONFIG.MemtableSize {
 		im := memtable.NewImmutableMemtable(writeMem.ToRaw())
-		engine.immQueue.Push(im) // blocks here if queue is at MAX_IMMUTABLE_COUNT
+		engine.immQueue.Push(im)
 		engine.swapActiveMem(writeMem)
 	}
 
 	return nil
+}
+
+func (engine *Engine) replayFlush(mem memtable.Memtable) {
+	snapshot := mem.TakeSnapshot() // atomic copy+clear; safe because single-threaded
+	engine.activeMemMu.Lock()
+	engine.activeMem = memtable.NewMemtable()
+	engine.activeMemMu.Unlock()
+	engine.ss_parser.FlushMemtable(snapshot)
 }

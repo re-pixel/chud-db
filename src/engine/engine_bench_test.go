@@ -8,6 +8,46 @@ import (
 	"testing"
 )
 
+func TestWALReplayInlineFlush(t *testing.T) {
+	benchDir := t.TempDir()
+
+	const entries = 30 // well above MEMTABLE_SIZE=20 with 4-byte entries
+	eng1, err := NewBenchEngine(benchDir)
+	if err != nil {
+		t.Fatalf("NewBenchEngine: %v", err)
+	}
+	eng1.Start()
+	keys := make([]string, entries)
+	vals := make([]string, entries)
+	for i := range entries {
+		keys[i] = fmt.Sprintf("rk%d", i)
+		vals[i] = fmt.Sprintf("rv%d", i)
+		if err := eng1.Write("", keys[i], vals[i], false); err != nil {
+			t.Fatalf("Write[%d]: %v", i, err)
+		}
+	}
+
+	eng2, err := NewBenchEngine(benchDir)
+	if err != nil {
+		t.Fatalf("NewBenchEngine restart: %v", err)
+	}
+	eng2.Start()
+	defer eng2.Shut()
+
+	for i := range entries {
+		got, ok, err := eng2.Read("", keys[i])
+		if err != nil {
+			t.Fatalf("Read(%q) after restart: %v", keys[i], err)
+		}
+		if !ok {
+			t.Fatalf("key %q not found after WAL replay", keys[i])
+		}
+		if got != vals[i] {
+			t.Fatalf("key %q: got %q, want %q", keys[i], got, vals[i])
+		}
+	}
+}
+
 func TestBenchEngineUsesIsolatedDirs(t *testing.T) {
 	benchDir := t.TempDir()
 
