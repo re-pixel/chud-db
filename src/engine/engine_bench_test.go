@@ -11,7 +11,7 @@ import (
 func TestWALReplayInlineFlush(t *testing.T) {
 	benchDir := t.TempDir()
 
-	const entries = 30 // well above MEMTABLE_SIZE=20 with 4-byte entries
+	const entries = 30 // well above MEMTABLE_SIZE=20
 	eng1, err := NewBenchEngine(benchDir)
 	if err != nil {
 		t.Fatalf("NewBenchEngine: %v", err)
@@ -25,6 +25,12 @@ func TestWALReplayInlineFlush(t *testing.T) {
 		if err := eng1.Write("", keys[i], vals[i], false); err != nil {
 			t.Fatalf("Write[%d]: %v", i, err)
 		}
+	}
+	// Graceful shutdown: flushes active memtable and WAL to disk before eng2 starts.
+	// Without this, eng1's background flusher races with eng2's WAL replay and
+	// may Purge() entries that haven't been written to an SSTable yet.
+	if err := eng1.Shut(); err != nil {
+		t.Fatalf("eng1.Shut: %v", err)
 	}
 
 	eng2, err := NewBenchEngine(benchDir)
@@ -40,7 +46,7 @@ func TestWALReplayInlineFlush(t *testing.T) {
 			t.Fatalf("Read(%q) after restart: %v", keys[i], err)
 		}
 		if !ok {
-			t.Fatalf("key %q not found after WAL replay", keys[i])
+			t.Fatalf("key %q not found after restart", keys[i])
 		}
 		if got != vals[i] {
 			t.Fatalf("key %q: got %q, want %q", keys[i], got, vals[i])

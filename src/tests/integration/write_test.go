@@ -39,9 +39,7 @@ func TestWritePathIntegration(t *testing.T) {
 	writtenLocation := fileWriter.GetLocation()
 	ssParser.FlushMemtable(mt.ToRaw())
 
-	// Block 0 starts with the first sorted entry (key1/value1).
-	// Data bytes are at the start of the block, trailer at the end — unchanged.
-	data, err := bm.ReadBlock(writtenLocation, 0, true)
+	data, err := bm.ReadAt(writtenLocation, 0, CONFIG.BlockSize)
 	if err != nil {
 		t.Fatalf("Failed to read block: %v", err)
 	}
