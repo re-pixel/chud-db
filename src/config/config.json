@@ -1,6 +1,5 @@
 {
     "BLOCK_SIZE":40,
-    "SUMMARY_STEP":3,
     "TOMBSTONE": "<DELETED!>",
     "TOKEN_REFILL_RATE": 0.1,
     "MAX_TOKEN": 1000,

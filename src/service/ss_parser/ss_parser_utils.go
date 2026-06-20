@@ -9,66 +9,64 @@ import (
 
 var CONFIG = config.GetConfig()
 
-func SerializeDataGetOffsets(fw file_writer.FileWriterInterface, keyValues []key_value.KeyValue) ([]string, []int) {
-	keys := make([]string, len(keyValues))
-	offsets := make([]int, len(keyValues))
-	for i := 0; i < len(keyValues); i++ {
-		value := append(SizeAndValueToBytes(keyValues[i].GetKey()), SizeAndValueToBytes(keyValues[i].GetValue())...)
-		blockIndex := fw.Write(value, false, nil)
-		keys[i] = keyValues[i].GetKey()
-		offsets[i] = blockIndex
-	}
-	return keys, offsets
+// FooterSize is the fixed byte length of the SSTable footer written at the end of the file.
+const FooterSize = 48
+
+// FooterMagic is written as the last 8 bytes of every SSTable footer for integrity validation.
+const FooterMagic = int64(0x0D1AACCE55DB0001)
+
+type IndexEntry struct {
+	Key    string
+	Offset int64 // byte offset of the data block from the start of the file
 }
 
-func SerializeIndexGetOffsets(keys []string, offsets []int, fw file_writer.FileWriterInterface) ([]string, []int) {
-
-	elNum := len(keys) / CONFIG.SummaryStep
-	if len(keys)%CONFIG.SummaryStep != 0 {
-		elNum++
-	}
-	if len(keys) < CONFIG.SummaryStep {
-		elNum = len(keys)
-	}
-	sumKeys := make([]string, 0, elNum)
-	sumOffsets := make([]int, 0, elNum)
-
-	for i := 0; i < len(keys); i++ {
-		key := keys[i]
-		offset := offsets[i]
-		value := append(SizeAndValueToBytes(key), IntToBytes(int64(offset))...)
-		currBlock := fw.Write(value, false, nil)
-
-		if i == 0 || i == len(keys)-1 || i%CONFIG.SummaryStep == 0 {
-			sumKeys = append(sumKeys, key)
-			sumOffsets = append(sumOffsets, currBlock)
+func SerializeDataBuildIndex(fw file_writer.FileWriterInterface, keyValues []key_value.KeyValue) []IndexEntry {
+	var index []IndexEntry
+	lastBlock := -1
+	for _, kv := range keyValues {
+		value := append(SizeAndValueToBytes(kv.GetKey()), SizeAndValueToBytes(kv.GetValue())...)
+		blockNum := fw.Write(value, false, nil)
+		if blockNum != lastBlock {
+			index = append(index, IndexEntry{
+				Key:    kv.GetKey(),
+				Offset: int64(blockNum) * int64(CONFIG.BlockSize),
+			})
+			lastBlock = blockNum
 		}
 	}
-	return sumKeys, sumOffsets
+	return index
 }
-func SerializeSummary(keys []string, offsets []int, fw file_writer.FileWriterInterface) {
 
-	for i := 0; i < len(keys); i++ {
-		key := keys[i]
-		offset := offsets[i]
-		value := append(SizeAndValueToBytes(key), IntToBytes(int64(offset))...)
-		fw.Write(value, false, nil)
-
+func SerializeIndex(entries []IndexEntry) []byte {
+	var buf []byte
+	for _, e := range entries {
+		buf = append(buf, IntToBytes(int64(len(e.Key)))...)
+		buf = append(buf, []byte(e.Key)...)
+		buf = append(buf, IntToBytes(e.Offset)...)
 	}
-
+	return buf
 }
 
-func SerializeMetaData(summaryStartOffset int, bloomFilterBytes []byte, merkleTreeBytes []byte, numOfItems int, fw file_writer.FileWriterInterface, SummaryEndOffset int, prefixFilterBytes []byte) {
-	starting_offset := fw.Write(IntToBytes(int64(len(bloomFilterBytes))), false, nil)
-	fw.Write(bloomFilterBytes, false, nil)
-	fw.Write(IntToBytes(int64(len(prefixFilterBytes))), false, nil)
-	fw.Write(prefixFilterBytes, false, nil)
-	fw.Write(IntToBytes(int64(summaryStartOffset)), false, nil)
-	fw.Write(IntToBytes(int64(SummaryEndOffset)), false, nil)
-	fw.Write(IntToBytes(int64(numOfItems)), false, nil)
-	fw.Write(IntToBytes(int64(len(merkleTreeBytes))), false, nil)
-	fw.Write(merkleTreeBytes, false, nil)
-	fw.Write(nil, true, IntToBytes(int64(starting_offset)))
+func SerializeFilterSection(bf []byte, pbf []byte, merkle []byte) []byte {
+	var buf []byte
+	buf = append(buf, IntToBytes(int64(len(bf)))...)
+	buf = append(buf, bf...)
+	buf = append(buf, IntToBytes(int64(len(pbf)))...)
+	buf = append(buf, pbf...)
+	buf = append(buf, IntToBytes(int64(len(merkle)))...)
+	buf = append(buf, merkle...)
+	return buf
+}
+
+func SerializeFooter(indexOffset, indexSize, filterOffset, filterSize, itemCount int64) []byte {
+	buf := make([]byte, FooterSize)
+	binary.BigEndian.PutUint64(buf[0:], uint64(indexOffset))
+	binary.BigEndian.PutUint64(buf[8:], uint64(indexSize))
+	binary.BigEndian.PutUint64(buf[16:], uint64(filterOffset))
+	binary.BigEndian.PutUint64(buf[24:], uint64(filterSize))
+	binary.BigEndian.PutUint64(buf[32:], uint64(itemCount))
+	binary.BigEndian.PutUint64(buf[40:], uint64(FooterMagic))
+	return buf
 }
 
 func IntToBytes(n int64) []byte {

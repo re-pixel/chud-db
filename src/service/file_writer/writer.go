@@ -19,7 +19,6 @@ type FileWriter struct {
 	currentBlockNum int
 	blockSize       int
 	offsetInBlock   int
-	allDataWritten  []byte
 }
 
 func NewFileWriter(bm *block_manager.BlockManager, blockSize int, name string) *FileWriter {
@@ -28,7 +27,7 @@ func NewFileWriter(bm *block_manager.BlockManager, blockSize int, name string) *
 
 func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name string, dataRoot string) *FileWriter {
 	if name == "" {
-		name = generateFileName(0) // Default name if not provided
+		name = generateFileName(0)
 	}
 	location := filepath.Join(dataRoot, name)
 	if err := os.MkdirAll(filepath.Dir(location), 0755); err != nil {
@@ -42,7 +41,6 @@ func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name stri
 		currentBlockNum: 0,
 		blockSize:       blockSize,
 		offsetInBlock:   0,
-		allDataWritten:  make([]byte, 0),
 	}
 }
 
@@ -55,8 +53,7 @@ func generateFileName(level int) string {
 
 // Commit atomically renames the in-progress .tmp file to the final .db path.
 // After this call the SSTable becomes visible to readers.
-// If the location does not end with ".tmp" (e.g. a test supplied a .db path
-// directly) this is a safe no-op.
+// If the location does not end with ".tmp" this is a safe no-op.
 func (fw *FileWriter) Commit() error {
 	if !strings.HasSuffix(fw.location, ".tmp") {
 		return nil
@@ -69,23 +66,32 @@ func (fw *FileWriter) Commit() error {
 	return nil
 }
 
+// Block trailer constants.
+// Each block ends with [usedBytes:2][blockType:1] (3 bytes total).
+// usedBytes is the number of actual data bytes at the start of the block.
+const (
+	JumboStart  = 1
+	JumboMiddle = 3
+	JumboEnd    = 7
+	NonJumbo    = 0
+)
+
 func (fw *FileWriter) Write(data []byte, sectionEnd bool, size []byte) int {
 	if sectionEnd {
-		if len(size) > 0 {
-			fw.FlushWithSize(size)
-		}
 		if len(fw.currentBlock) > 0 {
 			fw.FlushCurrentBlock()
 		}
 	}
 
-	if fw.IsJumbo(len(data)) {
-		fw.WriteJumboData(data)
+	if len(data) == 0 {
 		return fw.currentBlockNum
 	}
 
+	if fw.IsJumbo(len(data)) {
+		return fw.WriteJumboData(data)
+	}
+
 	if !fw.CanWrite(len(data)) {
-		// Write current block to disk and start a new block
 		fw.FlushCurrentBlock()
 	}
 	fw.currentBlock = append(fw.currentBlock, data...)
@@ -94,189 +100,121 @@ func (fw *FileWriter) Write(data []byte, sectionEnd bool, size []byte) int {
 	return fw.currentBlockNum
 }
 
-// IsJumbo returns true if the data is larger than a single block
+// IsJumbo returns true if the data cannot fit in a single block.
+// A block holds at most blockSize-3 bytes of data (3 bytes reserved for the trailer).
 func (fw *FileWriter) IsJumbo(dataLen int) bool {
-	// Account for notation (3 bytes) and jumbo flag (3 bytes) = 6 bytes overhead for single block
-	return dataLen > fw.blockSize-6
+	return dataLen > fw.blockSize-3
 }
 
-// Jumbo flag constants
-// Block structure: [DATA] + [<!>] + [PADDING] + [3-BYTE JUMBO FLAG]
-const (
-	JumboStart  = 1 // 00000001 - First block in jumbo sequence
-	JumboMiddle = 3 // 00000011 - Middle block in jumbo sequence
-	JumboEnd    = 7 // 00000111 - Last block in jumbo sequence
-	NonJumbo    = 0 // 00000000 - Regular non-jumbo block
-)
-
-// GetJumboFlagName returns a human-readable name for the jumbo flag
-func GetJumboFlagName(flag byte) string {
-	switch flag {
-	case JumboStart:
-		return "JUMBO_START"
-	case JumboMiddle:
-		return "JUMBO_MIDDLE"
-	case JumboEnd:
-		return "JUMBO_END"
-	case NonJumbo:
-		return "NON_JUMBO"
-	default:
-		return "UNKNOWN"
-	}
-}
-
-// WriteJumboData splits and writes data that is larger than a block
-func (fw *FileWriter) WriteJumboData(data []byte) {
-
-	if len(fw.currentBlock) > 0 {
-		fw.FlushCurrentBlock()
-	}
-
-	// Calculate how much space is available per block
-	// Every block needs space for: data + <!> + padding + jumbo_flag
-	// So available space for data is: blockSize - 3 (<!>) - 3 (jumbo_flag) = blockSize - 6
-	availablePerBlock := fw.blockSize - 6 // 3 bytes for <!>, 3 bytes for jumbo flag
-
-	// Calculate number of blocks needed
-	numBlocks := (len(data) + availablePerBlock - 1) / availablePerBlock
-
-	dataOffset := 0
-	for i := 0; i < numBlocks; i++ {
-
-		remainingData := len(data) - dataOffset
-		chunkSize := availablePerBlock
-		if remainingData < availablePerBlock {
-			chunkSize = remainingData
-		}
-
-		wrData := data[dataOffset : dataOffset+chunkSize]
-		dataOffset += chunkSize
-
-		wrDataCopy := make([]byte, len(wrData))
-		copy(wrDataCopy, wrData)
-		wrData = wrDataCopy
-
-		jumboFlag := make([]byte, 3)
-		if numBlocks == 1 {
-			// Single jumbo block
-			jumboFlag[2] = JumboStart
-		} else if i == 0 {
-			// First block in sequence
-			jumboFlag[2] = JumboStart
-		} else if i == numBlocks-1 {
-			// Last block in sequence
-			jumboFlag[2] = JumboEnd
-		} else {
-			// Middle block in sequence
-			jumboFlag[2] = JumboMiddle
-		}
-
-		// Add <!> notation to every block
-		notation := "<!>"
-		notationBytes := []byte(notation)
-		wrData = append(wrData, notationBytes...)
-
-		// Add padding to reach block size
-		if len(wrData)+3 < fw.blockSize {
-			padding := make([]byte, fw.blockSize-len(wrData)-3)
-			wrData = append(wrData, padding...)
-		}
-
-		// Add jumbo flag at the end
-		wrData = append(wrData, jumboFlag...)
-
-		fw.allDataWritten = append(fw.allDataWritten, wrData...)
-		err := fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, wrData)
-
-		if err != nil {
-			fmt.Printf("Error writing jumbo block %d: %v\n", fw.currentBlockNum, err)
-			return
-		}
-		fw.currentBlockNum++
-		fw.currentBlock = make([]byte, 0, fw.blockSize)
-		fw.offsetInBlock = 0
-
-	}
-}
-
-// CanWrite checks if the data can fit in the current block (reserving 3 bytes for jumbo flag)
+// CanWrite returns true if dataLen bytes can be appended to the current block.
 func (fw *FileWriter) CanWrite(dataLen int) bool {
-	return fw.offsetInBlock+dataLen+3 <= fw.blockSize // Reserve 3 bytes for jumbo flag
+	return fw.offsetInBlock+dataLen+3 <= fw.blockSize
 }
 
-// FlushCurrentBlock writes the current block to disk and starts a new block
 func (fw *FileWriter) FlushCurrentBlock() {
-	// when flushing we add a flag at the end of data to indicate that the rest is padding
-	if len(fw.currentBlock) > 0 {
-		// Add jumbo flag (0 = not jumbo)
-		jumboFlag := make([]byte, 3)
-		jumboFlag[2] = NonJumbo // Use constant for non-jumbo blocks
-		notation := "<!>"       //data end notation
-		notationBytes := []byte(notation)
-		//add padding to ensure block size (accounting for 3-byte jumbo flag)
-		if len(fw.currentBlock)+3+3 < fw.blockSize {
-			padding := make([]byte, fw.blockSize-len(fw.currentBlock)-3-3)
-			fw.currentBlock = append(fw.currentBlock, notationBytes...)
-			fw.currentBlock = append(fw.currentBlock, padding...)
-		}
-
-		// Add jumbo flag at the end
-		fw.currentBlock = append(fw.currentBlock, jumboFlag...)
-		fw.allDataWritten = append(fw.allDataWritten, fw.currentBlock...)
-		fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, fw.currentBlock)
-		fw.currentBlockNum++
-		fw.currentBlock = make([]byte, 0, fw.blockSize)
-		fw.offsetInBlock = 0
+	if len(fw.currentBlock) == 0 {
+		return
 	}
-}
-
-func (fw *FileWriter) FlushWithSize(size []byte) {
-	//this is the same flush bit instead of padding to the top, at the last 8bytes there is size var
-	fw.FlushCurrentBlock()
-	// Add jumbo flag (0 = not jumbo)
-	jumboFlag := make([]byte, 3)
-	jumboFlag[2] = NonJumbo // Use constant for non-jumbo blocks
-	notation := "<!>"       //data end notation
-	// move string into bytes
-	notationBytes := []byte(notation)
-	if len(fw.currentBlock)+3+8+3 >= fw.blockSize {
-		fw.FlushCurrentBlock()
+	usedBytes := len(fw.currentBlock)
+	padLen := fw.blockSize - usedBytes - 3
+	if padLen > 0 {
+		fw.currentBlock = append(fw.currentBlock, make([]byte, padLen)...)
 	}
-	padding := make([]byte, fw.blockSize-len(fw.currentBlock)-3-8-3) // 8 bytes for size, 3 bytes for jumbo flag
-
-	fw.currentBlock = append(fw.currentBlock, padding...)
-	fw.currentBlock = append(fw.currentBlock, size...)
-	fw.currentBlock = append(fw.currentBlock, notationBytes...) // Add end of section notation
-	fw.currentBlock = append(fw.currentBlock, jumboFlag...)     // Add jumbo flag at the very end
-	// If the current block is already full, we need to flush it first
-
-	fw.allDataWritten = append(fw.allDataWritten, fw.currentBlock...)
-	fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, fw.currentBlock)
+	fw.currentBlock = append(fw.currentBlock,
+		byte(usedBytes>>8),
+		byte(usedBytes),
+		NonJumbo,
+	)
+	fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, fw.currentBlock) //nolint:errcheck
 	fw.currentBlockNum++
 	fw.currentBlock = make([]byte, 0, fw.blockSize)
 	fw.offsetInBlock = 0
 }
-func (fw *FileWriter) GetAllDataWritten() []byte {
-	return fw.allDataWritten
+
+func (fw *FileWriter) WriteJumboData(data []byte) int {
+	if len(fw.currentBlock) > 0 {
+		fw.FlushCurrentBlock()
+	}
+
+	startBlock := fw.currentBlockNum
+	availablePerBlock := fw.blockSize - 3
+	numBlocks := (len(data) + availablePerBlock - 1) / availablePerBlock
+
+	dataOffset := 0
+	for i := 0; i < numBlocks; i++ {
+		end := min(dataOffset+availablePerBlock, len(data))
+		chunk := data[dataOffset:end]
+		chunkSize := len(chunk)
+		dataOffset = end
+
+		var blockType byte
+		switch {
+		case i == 0 && numBlocks == 1:
+			blockType = JumboEnd
+		case i == 0:
+			blockType = JumboStart
+		case i == numBlocks-1:
+			blockType = JumboEnd
+		default:
+			blockType = JumboMiddle
+		}
+
+		blockData := make([]byte, fw.blockSize)
+		copy(blockData, chunk)
+		blockData[fw.blockSize-3] = byte(chunkSize >> 8)
+		blockData[fw.blockSize-2] = byte(chunkSize)
+		blockData[fw.blockSize-1] = blockType
+
+		fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, blockData) //nolint:errcheck
+		fw.currentBlockNum++
+	}
+
+	fw.currentBlock = make([]byte, 0, fw.blockSize)
+	fw.offsetInBlock = 0
+	return startBlock
 }
+
+func (fw *FileWriter) WriteRaw(data []byte) (int64, error) {
+	fw.FlushCurrentBlock()
+	startOffset := int64(fw.currentBlockNum) * int64(fw.blockSize)
+	f, err := os.OpenFile(fw.location, os.O_WRONLY, 0644)
+	if err != nil {
+		return 0, err
+	}
+	defer f.Close()
+	if _, err = f.Seek(startOffset, 0); err != nil {
+		return 0, err
+	}
+	if _, err = f.Write(data); err != nil {
+		return 0, err
+	}
+	return startOffset, nil
+}
+
+// CurrentByteOffset returns the byte offset of the next block to be written.
+func (fw *FileWriter) CurrentByteOffset() int64 {
+	return int64(fw.currentBlockNum) * int64(fw.blockSize)
+}
+
 func (fw *FileWriter) GetLocation() string {
 	return fw.location
 }
+
 func (fw *FileWriter) GetCurrentBlockNum() int {
 	return fw.currentBlockNum
 }
+
 func (fw *FileWriter) SetLocation(location string) {
 	fw.location = location
 }
 
 func (fw *FileWriter) ResetFileWriter(name string) {
 	if name == "" {
-		name = generateFileName(0) // Default name if not provided
+		name = generateFileName(0)
 	}
 	fw.currentBlock = make([]byte, 0, fw.blockSize)
 	fw.currentBlockNum = 0
 	fw.offsetInBlock = 0
-	fw.allDataWritten = make([]byte, 0)
 	fw.location = filepath.Join(fw.dataRoot, name)
 	if err := os.MkdirAll(filepath.Dir(fw.location), 0755); err != nil {
 		fmt.Println("Error creating sstable dir:", err)

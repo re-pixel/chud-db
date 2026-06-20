@@ -11,7 +11,6 @@ var configData []byte
 
 type Config struct {
 	BlockSize                    int     `json:"BLOCK_SIZE"`
-	SummaryStep                  int     `json:"SUMMARY_STEP"`
 	Tombstone                    string  `json:"TOMBSTONE"`
 	TokenRefillRate              float64 `json:"TOKEN_REFILL_RATE"`
 	MaxTokens                    int     `json:"MAX_TOKEN"`

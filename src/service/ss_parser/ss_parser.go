@@ -7,6 +7,10 @@ import (
 	"nosqlEngine/src/service/file_writer"
 )
 
+type SSParser interface {
+	FlushMemtable(data []key_value.KeyValue)
+}
+
 type SSParserImpl struct {
 	fileWriter file_writer.FileWriterInterface
 }
@@ -17,26 +21,36 @@ func NewSSParser(fileWriter file_writer.FileWriterInterface) *SSParserImpl {
 
 func (ssParser *SSParserImpl) FlushMemtable(data []key_value.KeyValue) {
 	key_value.SortByKeys(&data)
+
 	filter := bloom_filter.NewBloomFilterWithParams(len(data), 0.01)
 	filter.AddMultiple(key_value.GetKeys(data))
+
+	prefixFilter := bloom_filter.NewPrefixBloomFilter()
+	prefixFilter.AddMultiple(key_value.GetKeys(data))
+
 	merkleTree := merkle_tree.InitializeMerkleTree(len(data))
 	for _, kv := range data {
 		merkleTree.AddLeaf(kv.GetValue())
 	}
-	keys, offsets := SerializeDataGetOffsets(ssParser.fileWriter, data)
-	ssParser.fileWriter.Write(nil, true, nil) // Write end of section marker
 
-	sumKeys, sumOffsets := SerializeIndexGetOffsets(keys, offsets, ssParser.fileWriter)
-	initialSummaryOffset := ssParser.fileWriter.Write(nil, true, nil)
+	// Write data blocks and collect one index entry per block boundary.
+	indexEntries := SerializeDataBuildIndex(ssParser.fileWriter, data)
+	ssParser.fileWriter.Write(nil, true, nil) // flush last partial data block
 
-	SerializeSummary(sumKeys, sumOffsets, ssParser.fileWriter)
+	// Write index as raw bytes immediately after the last data block.
+	indexBytes := SerializeIndex(indexEntries)
+	indexOffset, _ := ssParser.fileWriter.WriteRaw(indexBytes) //nolint:errcheck
+
+	// Write filter section (bloom + prefix bloom + merkle root) as raw bytes.
 	bt_bf, _ := filter.SerializeToByteArray()
-	prefixFilter := bloom_filter.NewPrefixBloomFilter()
-	prefixFilter.AddMultiple(key_value.GetKeys(data))
 	bt_pbf, _ := prefixFilter.SerializeToByteArray()
-	SerializeMetaData(ssParser.fileWriter.Write(nil, true, nil), bt_bf, merkleTree.GetRootBytes(), len(data), ssParser.fileWriter, initialSummaryOffset, bt_pbf)
+	filterBytes := SerializeFilterSection(bt_bf, bt_pbf, merkleTree.GetRootBytes())
+	filterOffset, _ := ssParser.fileWriter.WriteRaw(filterBytes) //nolint:errcheck
 
-	// Atomically publish the completed SSTable and prepare for the next flush.
-	ssParser.fileWriter.Commit()         //nolint:errcheck
+	// Write the 48-byte footer as the final raw bytes of the file.
+	footer := SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(len(data)))
+	ssParser.fileWriter.WriteRaw(footer) //nolint:errcheck
+
+	ssParser.fileWriter.Commit() //nolint:errcheck
 	ssParser.fileWriter.ResetFileWriter("")
 }

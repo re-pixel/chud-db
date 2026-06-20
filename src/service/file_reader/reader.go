@@ -1,7 +1,6 @@
 package file_reader
 
 import (
-	"bytes"
 	"fmt"
 	"nosqlEngine/src/service/block_manager"
 )
@@ -21,7 +20,6 @@ type FileReader struct {
 	currentBlockNum int
 	blockSize       int
 	offsetInBlock   int
-	allDataRead     []byte
 	direction       bool // true for forward, false for backward
 }
 
@@ -33,8 +31,7 @@ func NewFileReader(location string, blockSize int, bm block_manager.BlockManager
 		currentBlockNum: 0,
 		blockSize:       blockSize,
 		offsetInBlock:   0,
-		allDataRead:     make([]byte, 0),
-		direction:       true, // default to forward reading
+		direction:       true,
 	}
 }
 
@@ -149,36 +146,21 @@ func (fr *FileReader) readJumboBackward(startBlockNum int, initialFlag byte) ([]
 	return jumboData, readBlocks + 1, nil
 }
 
-// cleanBlockData removes the jumbo flag and padding, returning only the actual data
+// cleanBlockData extracts the actual data bytes from a block using the trailer.
+// Block layout: [data: usedBytes][zero padding][usedBytes: 2 bytes big-endian][blockType: 1 byte]
 func (fr *FileReader) cleanBlockData(block []byte) []byte {
-	if len(block) < 6 { // At least 3 bytes for notation + 3 bytes for jumbo flag
+	if len(block) < 3 {
 		return []byte{}
 	}
-
-	// Remove the last 3 bytes (jumbo flag)
-	dataWithNotation := block[:len(block)-3]
-
-	// Find the notation "<!>" to separate data from padding
-	notation := []byte("<!>")
-	notationIndex := bytes.Index(dataWithNotation, notation)
-
-	if notationIndex == -1 {
-		// No notation found, return all data (shouldn't happen in normal cases)
-		return dataWithNotation
+	usedBytes := int(block[len(block)-3])<<8 | int(block[len(block)-2])
+	if usedBytes > len(block)-3 {
+		return block[:len(block)-3]
 	}
-
-	// Return only the data before the notation
-	cleanData := dataWithNotation[:notationIndex]
-
-	return cleanData
+	return block[:usedBytes]
 }
 
 func (fr *FileReader) SetDirection(forward bool) {
 	fr.direction = forward
-}
-
-func (fr *FileReader) GetAllDataRead() []byte {
-	return fr.allDataRead
 }
 
 // GetJumboFlagName returns a human-readable name for the jumbo flag
@@ -197,18 +179,9 @@ func GetJumboFlagName(flag byte) string {
 	}
 }
 
-// ReadEntry reads a complete entry (handling both regular and jumbo blocks)
+// ReadEntry reads a complete entry (handling both regular and jumbo blocks).
 func (fr *FileReader) ReadEntry(blockNum int) ([]byte, int, error) {
-	entry, readBlocks, err := fr.Read(blockNum)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	if entry != nil {
-		fr.allDataRead = append(fr.allDataRead, entry...)
-	}
-
-	return entry, readBlocks, nil
+	return fr.Read(blockNum)
 }
 
 // get location of the file
@@ -242,6 +215,5 @@ func (fr *FileReader) ResetReader(location string, direction bool) {
 	fr.currentBlock = make([]byte, 0, fr.blockSize)
 	fr.currentBlockNum = 0
 	fr.offsetInBlock = 0
-	fr.allDataRead = make([]byte, 0)
 	fr.direction = direction
 }

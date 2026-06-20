@@ -17,8 +17,7 @@ import (
 
 var CONFIG = config.GetConfig()
 
-type SSCompacterST struct {
-}
+type SSCompacterST struct{}
 
 func NewSSCompacterST() *SSCompacterST {
 	return &SSCompacterST{}
@@ -37,7 +36,7 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 			fw := file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db", dataRoot)
 			sc.compactTables(toCompact, fw, bm)
 			for _, file := range toCompact {
-				os.Remove(file)
+				os.Remove(file) //nolint:errcheck
 			}
 			compacted = true
 		}
@@ -47,46 +46,56 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 }
 
 func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWriter, bm *block_manager.BlockManager) {
-	counts := make([]int, len(tables)) // holds the number of items in each table
+	counts := make([]int, len(tables))
 	currKeys := make([]string, len(tables))
 	currValues := make([]string, len(tables))
 	pool := retriever.NewEntryRetrieverPool(bm, tables)
-	totalItems := 0                                    // total number of items across all tables
+	totalItems := 0
 	for i := range tables {
 		counts[i] = int(pool.GetMetadata(i).Getnum_of_items())
 		totalItems += counts[i]
-		currKeys[i], currValues[i], _, _ = pool.ReadNextVal(i) // Read the first key and value from each table
+		currKeys[i], currValues[i], _, _ = pool.ReadNextVal(i)
 	}
-	// For Index
-	keys := []string{}
-	blockOffsets := []int{}
-	currBlockOffset := -1
 
-	bloom := bloom_filter.NewBloomFilterWithParams(totalItems, 0.01) // 1% false positive rate
+	bloom := bloom_filter.NewBloomFilterWithParams(totalItems, 0.01)
+	prefixFilter := bloom_filter.NewPrefixBloomFilter()
 	merkle := merkle_tree.InitializeMerkleTree(totalItems)
+
+	var indexEntries []ss_parser.IndexEntry
+	lastBlockNum := -1
 
 	for !areAllValuesZero(counts) {
 		minIndex := getMinValIndex(currKeys, currValues)
-		removeDuplicateKeys(currKeys, minIndex) // Remove duplicates for the current key
+		removeDuplicateKeys(currKeys, minIndex)
+
 		bloom.Add(currKeys[minIndex])
-		merkle.AddLeaf(string(currValues[minIndex])) // Add to Merkle tree
+		prefixFilter.Add(currKeys[minIndex])
+		merkle.AddLeaf(currValues[minIndex])
+
 		fullVal := append(ss_parser.SizeAndValueToBytes(currKeys[minIndex]), ss_parser.SizeAndValueToBytes(currValues[minIndex])...)
-		newBlockOffset := fw.Write(fullVal, false, nil)
-		if currBlockOffset != newBlockOffset {
-			currBlockOffset = newBlockOffset
-			keys = append(keys, currKeys[minIndex])
-			blockOffsets = append(blockOffsets, currBlockOffset)
+		newBlockNum := fw.Write(fullVal, false, nil)
+		if newBlockNum != lastBlockNum {
+			lastBlockNum = newBlockNum
+			indexEntries = append(indexEntries, ss_parser.IndexEntry{
+				Key:    currKeys[minIndex],
+				Offset: int64(newBlockNum) * int64(CONFIG.BlockSize),
+			})
 		}
-		currKeys[minIndex] = "" 
+
+		currKeys[minIndex] = ""
 		updateValsAndCounts(currKeys, currValues, counts, pool)
 	}
-	fw.Write(nil, true, nil) // Write end of file marker
-	summaryKeys, summaryOffsets := ss_parser.SerializeIndexGetOffsets(keys, blockOffsets, fw) // Write index offsets
-	initialSummaryOffset := fw.Write(nil, true, nil)
-	ss_parser.SerializeSummary(summaryKeys, summaryOffsets, fw)
-	prefixFilter := bloom_filter.NewPrefixBloomFilter()
+	fw.Write(nil, true, nil) // flush last data block
 
+	bt_bf, _ := bloom.SerializeToByteArray()
 	bt_pbf, _ := prefixFilter.SerializeToByteArray()
-	bt_bf, _ := bloom.SerializeToByteArray()          
-	ss_parser.SerializeMetaData(fw.Write(nil, true, nil), bt_bf, merkle.GetRootBytes(), totalItems, fw, initialSummaryOffset, bt_pbf) // Write metadata
+
+	indexBytes := ss_parser.SerializeIndex(indexEntries)
+	indexOffset, _ := fw.WriteRaw(indexBytes) //nolint:errcheck
+
+	filterBytes := ss_parser.SerializeFilterSection(bt_bf, bt_pbf, merkle.GetRootBytes())
+	filterOffset, _ := fw.WriteRaw(filterBytes) //nolint:errcheck
+
+	footer := ss_parser.SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(totalItems))
+	fw.WriteRaw(footer) //nolint:errcheck
 }
