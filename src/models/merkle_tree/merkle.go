@@ -12,10 +12,12 @@ type MerkleTree struct {
 }
 
 func InitializeMerkleTree(leafCount int) *MerkleTree {
-	// Računamo broj nivoa kao log2(leafCount) ceil
+	if leafCount <= 0 {
+		leafCount = 1
+	}
 	maxLevels := int(math.Ceil(math.Log2(float64(leafCount))))
 	if maxLevels == 0 {
-		maxLevels = 1 
+		maxLevels = 1
 	}
 	
 	return &MerkleTree{

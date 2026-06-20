@@ -12,13 +12,14 @@ import (
 )
 
 type FileWriter struct {
-	block_manager   block_manager.BlockManager
+	block_manager   *block_manager.BlockManager
 	location        string
 	dataRoot        string
 	currentBlock    []byte
 	currentBlockNum int
 	blockSize       int
 	offsetInBlock   int
+	rawBytesWritten int64
 }
 
 func NewFileWriter(bm *block_manager.BlockManager, blockSize int, name string) *FileWriter {
@@ -34,7 +35,7 @@ func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name stri
 		fmt.Println("Error creating sstable dir:", err)
 	}
 	return &FileWriter{
-		block_manager:   *bm,
+		block_manager:   bm,
 		location:        location,
 		dataRoot:        dataRoot,
 		currentBlock:    make([]byte, 0, blockSize),
@@ -44,16 +45,10 @@ func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name stri
 	}
 }
 
-// generateFileName returns a path with a .tmp extension. The file is only
-// renamed to .db by Commit() once all blocks have been written, ensuring
-// concurrent readers never observe a partially-written SSTable.
 func generateFileName(level int) string {
 	return fmt.Sprintf("sstable/lvl%d/sstable_%s.db.tmp", level, uuid.New().String())
 }
 
-// Commit atomically renames the in-progress .tmp file to the final .db path.
-// After this call the SSTable becomes visible to readers.
-// If the location does not end with ".tmp" this is a safe no-op.
 func (fw *FileWriter) Commit() error {
 	if !strings.HasSuffix(fw.location, ".tmp") {
 		return nil
@@ -66,9 +61,6 @@ func (fw *FileWriter) Commit() error {
 	return nil
 }
 
-// Block trailer constants.
-// Each block ends with [usedBytes:2][blockType:1] (3 bytes total).
-// usedBytes is the number of actual data bytes at the start of the block.
 const (
 	JumboStart  = 1
 	JumboMiddle = 3
@@ -100,13 +92,10 @@ func (fw *FileWriter) Write(data []byte, sectionEnd bool, size []byte) int {
 	return fw.currentBlockNum
 }
 
-// IsJumbo returns true if the data cannot fit in a single block.
-// A block holds at most blockSize-3 bytes of data (3 bytes reserved for the trailer).
 func (fw *FileWriter) IsJumbo(dataLen int) bool {
 	return dataLen > fw.blockSize-3
 }
 
-// CanWrite returns true if dataLen bytes can be appended to the current block.
 func (fw *FileWriter) CanWrite(dataLen int) bool {
 	return fw.offsetInBlock+dataLen+3 <= fw.blockSize
 }
@@ -176,7 +165,7 @@ func (fw *FileWriter) WriteJumboData(data []byte) int {
 
 func (fw *FileWriter) WriteRaw(data []byte) (int64, error) {
 	fw.FlushCurrentBlock()
-	startOffset := int64(fw.currentBlockNum) * int64(fw.blockSize)
+	startOffset := int64(fw.currentBlockNum)*int64(fw.blockSize) + fw.rawBytesWritten
 	f, err := os.OpenFile(fw.location, os.O_WRONLY, 0644)
 	if err != nil {
 		return 0, err
@@ -188,12 +177,12 @@ func (fw *FileWriter) WriteRaw(data []byte) (int64, error) {
 	if _, err = f.Write(data); err != nil {
 		return 0, err
 	}
+	fw.rawBytesWritten += int64(len(data))
 	return startOffset, nil
 }
 
-// CurrentByteOffset returns the byte offset of the next block to be written.
 func (fw *FileWriter) CurrentByteOffset() int64 {
-	return int64(fw.currentBlockNum) * int64(fw.blockSize)
+	return int64(fw.currentBlockNum)*int64(fw.blockSize) + fw.rawBytesWritten
 }
 
 func (fw *FileWriter) GetLocation() string {
@@ -215,6 +204,7 @@ func (fw *FileWriter) ResetFileWriter(name string) {
 	fw.currentBlock = make([]byte, 0, fw.blockSize)
 	fw.currentBlockNum = 0
 	fw.offsetInBlock = 0
+	fw.rawBytesWritten = 0
 	fw.location = filepath.Join(fw.dataRoot, name)
 	if err := os.MkdirAll(filepath.Dir(fw.location), 0755); err != nil {
 		fmt.Println("Error creating sstable dir:", err)

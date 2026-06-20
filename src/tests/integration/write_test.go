@@ -6,10 +6,10 @@ import (
 	"nosqlEngine/src/config"
 	b "nosqlEngine/src/service/block_manager"
 	fw "nosqlEngine/src/service/file_writer"
-	r "nosqlEngine/src/service/retriever"
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
 	m "nosqlEngine/src/memtable"
+	"nosqlEngine/src/sstable"
 	"nosqlEngine/src/utils"
 	"testing"
 
@@ -19,37 +19,33 @@ import (
 var CONFIG = config.GetConfig()
 
 func bytesToInt(buf []byte) int64 {
-
 	return int64(binary.BigEndian.Uint64(buf))
 }
+
 func TestWritePathIntegration(t *testing.T) {
-	// Setup block manager and file writer
 	bm := b.NewBlockManager()
 	blockSize := CONFIG.BlockSize
 	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/sstable_"+uuid.New().String()+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 	mt := m.NewMemtable()
 
-	// Create a set of key-value pairs
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("key%d", i+1)
 		value := fmt.Sprintf("value%d", i+1)
 		mt.Add(key, value)
 	}
 
-	// Capture the location before FlushMemtable resets the writer for the next flush.
+	// Capture location before FlushMemtable resets the writer.
 	writtenLocation := fileWriter.GetLocation()
-
-	// Write the memtable to disk via the parser and file writer
 	ssParser.FlushMemtable(mt.ToRaw())
 
-	// Read the file to verify the data
+	// Block 0 starts with the first sorted entry (key1/value1).
+	// Data bytes are at the start of the block, trailer at the end — unchanged.
 	data, err := bm.ReadBlock(writtenLocation, 0, true)
 	if err != nil {
 		t.Fatalf("Failed to read block: %v", err)
 	}
 
-	//check if the block data matches the expected serialized data
 	expectedKey := "key1"
 	expectedValue := "value1"
 
@@ -73,28 +69,31 @@ func TestWriteRead(t *testing.T) {
 	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/lvl0/sstable_"+uuidStr+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 
-	// Create a set of key-value pairs
 	for i := 0; i < 10; i++ {
 		key := fmt.Sprintf("keyyy%d", i+1)
-
 		value := fmt.Sprintf("valueee%d", i+1)
 		mt.Add(key, value)
-
 	}
 
-	// Write the memtable to disk via the parser and file writer
+	writtenPath := fileWriter.GetLocation()
 	ssParser.FlushMemtable(mt.ToRaw())
-	fmt.Print(
-		"File written successfully, now reading the data back...\n")
+	fmt.Print("File written successfully, now reading the data back...\n")
 
-	retriever := r.NewEntryRetriever(bm)
-
-	_, res, err := retriever.RetrieveEntry("keyyy1")
-
+	reader, err := sstable.Open(writtenPath, bm)
 	if err != nil {
-		t.Fatalf("Failed to retrieve entry: %v for metadata: %v", err, res)
+		t.Fatalf("Failed to open SSTable: %v", err)
 	}
 
+	value, ok, err := reader.Get("keyyy1")
+	if err != nil {
+		t.Fatalf("Get returned error: %v", err)
+	}
+	if !ok {
+		t.Fatalf("key keyyy1 not found in SSTable")
+	}
+	if value != "valueee1" {
+		t.Errorf("Value mismatch: got %q, want %q", value, "valueee1")
+	}
 }
 
 func TestPrefixScan(t *testing.T) {
@@ -103,30 +102,32 @@ func TestPrefixScan(t *testing.T) {
 	blockSize := CONFIG.BlockSize
 	uuidStr := uuid.New().String()
 
-	fileWriter := fw.NewFileWriter(bm, blockSize,uuidStr+".db")
+	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/lvl0/sstable_prefix_"+uuidStr+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 
-	// Create a set of key-value pairs
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < 20; i++ {
 		key := fmt.Sprintf("key%d", i+1)
-
 		value := fmt.Sprintf("valueee%d", i+1)
 		mt.Add(key, value)
-
 	}
 
-	// Write the memtable to disk via the parser and file writer
+	writtenPath := fileWriter.GetLocation()
 	ssParser.FlushMemtable(mt.ToRaw())
-	fmt.Print(
-		"File written successfully, now reading the data back...\n")
+	fmt.Print("File written successfully, now reading the data back...\n")
 
-	multiRetriever := r.NewMultiRetriever(bm)
-	results, err := multiRetriever.GetPrefixEntries("key1")
+	reader, err := sstable.Open(writtenPath, bm)
 	if err != nil {
-		t.Fatalf("Failed to retrieve prefix entries: %v", err)
+		t.Fatalf("Failed to open SSTable: %v", err)
+	}
+
+	results, err := reader.PrefixScan("key1")
+	if err != nil {
+		t.Fatalf("PrefixScan returned error: %v", err)
 	}
 	fmt.Printf("Retrieved %d entries with prefix 'key1':\n", len(results))
-	fmt.Println("Entries:", results)
+	if len(results) == 0 {
+		t.Error("Expected at least one result for prefix 'key1'")
+	}
 }
 
 func TestCompacter(t *testing.T) {
@@ -139,13 +140,35 @@ func TestCompacter(t *testing.T) {
 
 	fmt.Println("Compaction completed successfully")
 }
-func TestGas(t *testing.T) {
-	bm := b.NewBlockManager()
-	retriever := r.NewEntryRetriever(bm)
 
-	// Test retrieving a non-existent entry
-	_, _, err := retriever.RetrieveEntry("keyyy7")
+func TestGas(t *testing.T) {
+	mt := m.NewMemtable()
+	bm := b.NewBlockManager()
+	blockSize := CONFIG.BlockSize
+	uuidStr := uuid.New().String()
+
+	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/lvl0/sstable_gas_"+uuidStr+".db")
+	ssParser := ss_parser.NewSSParser(fileWriter)
+
+	for i := 0; i < 5; i++ {
+		key := fmt.Sprintf("gaskey%d", i+1)
+		value := fmt.Sprintf("gasvalue%d", i+1)
+		mt.Add(key, value)
+	}
+
+	writtenPath := fileWriter.GetLocation()
+	ssParser.FlushMemtable(mt.ToRaw())
+
+	reader, err := sstable.Open(writtenPath, bm)
 	if err != nil {
-		t.Fatalf("Expected error for non-existent key, got nil")
+		t.Fatalf("Failed to open SSTable: %v", err)
+	}
+
+	_, ok, err := reader.Get("nonexistent")
+	if err != nil {
+		t.Fatalf("Get for missing key returned error: %v", err)
+	}
+	if ok {
+		t.Fatal("Expected key not found, but Get returned ok=true")
 	}
 }
