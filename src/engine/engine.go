@@ -9,6 +9,7 @@ import (
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
 	"nosqlEngine/src/service/user_limiter"
+	"nosqlEngine/src/sstable"
 	"nosqlEngine/src/utils"
 	"nosqlEngine/src/wal"
 	"nosqlEngine/src/wal/record"
@@ -26,6 +27,7 @@ type Engine struct {
 	ss_parser      ss_parser.SSParser
 	ss_compacter   *ss_compacter.SSCompacterST
 	block_manager  *block_manager.BlockManager
+	tableCache     *sstable.TableCache
 	writeCh        chan writeReq
 	writerWG       sync.WaitGroup
 	flusherWG      sync.WaitGroup
@@ -57,6 +59,7 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 		ss_compacter:   ss_compacter.NewSSCompacterST(),
 		wal:            walInstance,
 		block_manager:  bm,
+		tableCache:     sstable.NewTableCache(CONFIG.TableCacheSize, bm),
 		writeCh:        make(chan writeReq, 256),
 		dataRoot:       dataRoot,
 		skipRateLimit:  skipRateLimit,

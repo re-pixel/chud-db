@@ -134,7 +134,7 @@ func TestCompacter(t *testing.T) {
 	bm := b.NewBlockManager()
 	sc := ss_compacter.NewSSCompacterST()
 
-	if !sc.CheckCompactionConditions(bm, utils.DefaultDataRoot()) {
+	if !sc.CheckCompactionConditions(bm, utils.DefaultDataRoot(), nil) {
 		t.Fatalf("Compaction conditions not met")
 	}
 

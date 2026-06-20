@@ -208,6 +208,25 @@ func (r *SSTableReader) ItemCount() int64 {
 	return r.itemCount
 }
 
+func (r *SSTableReader) ScanAll(fn func(key, value string)) error {
+	for _, entry := range r.index {
+		blockData, err := r.readDataBlock(entry.Offset)
+		if err != nil {
+			return err
+		}
+		off := 0
+		for off < len(blockData) {
+			key, value, n, err := readDataEntry(blockData[off:])
+			if err != nil {
+				break
+			}
+			off += n
+			fn(key, value)
+		}
+	}
+	return nil
+}
+
 func (r *SSTableReader) readDataBlock(blockOffset int64) ([]byte, error) {
 	block, err := r.bm.ReadAt(r.path, blockOffset, CONFIG.BlockSize)
 	if err != nil {

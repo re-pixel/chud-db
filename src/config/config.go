@@ -28,6 +28,7 @@ type Config struct {
 	SkipListLevels               int     `json:"SKIP_LIST_LEVELS"`
 	CompactionThreshold          int     `json:"COMPACTION_THRESHOLD"`
 	CacheCapacity                int     `json:"CACHE_CAPACITY"`
+	TableCacheSize               int     `json:"TABLE_CACHE_SIZE"`
 	MaxImmutableCount            int     `json:"MAX_IMMUTABLE_COUNT"`
 }
 

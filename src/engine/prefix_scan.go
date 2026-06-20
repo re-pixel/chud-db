@@ -2,7 +2,7 @@ package engine
 
 import (
 	"fmt"
-	"nosqlEngine/src/service/retriever"
+	"nosqlEngine/src/utils"
 	"sort"
 )
 
@@ -80,8 +80,6 @@ func (engine *Engine) PrefixScan(user string, prefix string, pageNum int, pageSi
 func (engine *Engine) findAllPrefixMatches(prefix string) (map[string]string, error) {
 	results := make(map[string]string)
 
-	// Scan active memtable then immutables newest-first.
-	// Keys recorded from a newer layer shadow older layers.
 	matchPrefix := func(key string) bool {
 		return len(key) >= len(prefix) && key[:len(prefix)] == prefix
 	}
@@ -93,7 +91,6 @@ func (engine *Engine) findAllPrefixMatches(prefix string) (map[string]string, er
 	}
 	for _, im := range engine.immQueue.Snapshot() {
 		for _, kv := range im.ToRaw() {
-			fmt.Println(kv.GetKey(), kv.GetValue())
 			if matchPrefix(kv.GetKey()) {
 				if _, seen := results[kv.GetKey()]; !seen {
 					results[kv.GetKey()] = kv.GetValue()
@@ -102,16 +99,23 @@ func (engine *Engine) findAllPrefixMatches(prefix string) (map[string]string, er
 		}
 	}
 
-	mretriever := retriever.NewMultiRetriever(engine.block_manager)
-	retriever_results, err := mretriever.GetPrefixEntries(prefix)
-	fmt.Print(retriever_results, results)
-	if err != nil {
-		fmt.Print("Failed to retrieve results from SSTables")
-	}
-	for key, value := range retriever_results {
-		if _, exists := results[key]; !exists {
-			results[key] = value
+	for level := 0; level < CONFIG.LSMLevels; level++ {
+		for _, path := range utils.ListSSTablesInLevel(engine.dataRoot, level) {
+			reader, err := engine.tableCache.GetOrOpen(path)
+			if err != nil {
+				continue
+			}
+			ssResults, err := reader.PrefixScan(prefix)
+			if err != nil {
+				continue
+			}
+			for key, value := range ssResults {
+				if _, exists := results[key]; !exists {
+					results[key] = value
+				}
+			}
 		}
 	}
+
 	return results, nil
 }

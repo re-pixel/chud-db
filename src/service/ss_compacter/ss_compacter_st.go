@@ -7,8 +7,8 @@ import (
 	"nosqlEngine/src/models/merkle_tree"
 	"nosqlEngine/src/service/block_manager"
 	"nosqlEngine/src/service/file_writer"
-	"nosqlEngine/src/service/retriever"
 	"nosqlEngine/src/service/ss_parser"
+	"nosqlEngine/src/sstable"
 	"nosqlEngine/src/utils"
 	"os"
 
@@ -23,7 +23,7 @@ func NewSSCompacterST() *SSCompacterST {
 	return &SSCompacterST{}
 }
 
-func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string) bool {
+func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string, tc *sstable.TableCache) bool {
 	level := 0
 	compacted := false
 	for level < CONFIG.LSMLevels {
@@ -36,6 +36,11 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 			fw := file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db", dataRoot)
 			sc.compactTables(toCompact, fw, bm)
 			for _, file := range toCompact {
+				if tc != nil {
+					tc.Evict(file)
+				} else {
+					bm.CloseFile(file)
+				}
 				os.Remove(file) //nolint:errcheck
 			}
 			compacted = true
@@ -45,16 +50,20 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 	return compacted
 }
 
+type kv struct{ key, value string }
+
 func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWriter, bm *block_manager.BlockManager) {
-	counts := make([]int, len(tables))
-	currKeys := make([]string, len(tables))
-	currValues := make([]string, len(tables))
-	pool := retriever.NewEntryRetrieverPool(bm, tables)
+	streams := make([][]kv, len(tables))
 	totalItems := 0
-	for i := range tables {
-		counts[i] = int(pool.GetMetadata(i).Getnum_of_items())
-		totalItems += counts[i]
-		currKeys[i], currValues[i], _, _ = pool.ReadNextVal(i)
+	for i, path := range tables {
+		reader, err := sstable.Open(path, bm)
+		if err != nil {
+			continue
+		}
+		reader.ScanAll(func(key, value string) { //nolint:errcheck
+			streams[i] = append(streams[i], kv{key, value})
+		})
+		totalItems += len(streams[i])
 	}
 
 	bloom := bloom_filter.NewBloomFilterWithParams(totalItems, 0.01)
@@ -63,38 +72,57 @@ func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWrit
 
 	var indexEntries []ss_parser.IndexEntry
 	lastBlockNum := -1
+	indices := make([]int, len(streams))
 
-	for !areAllValuesZero(counts) {
-		minIndex := getMinValIndex(currKeys, currValues)
-		removeDuplicateKeys(currKeys, minIndex)
+	for {
+		minKey := ""
+		minIdx := -1
+		for i, stream := range streams {
+			if indices[i] >= len(stream) {
+				continue
+			}
+			key := stream[indices[i]].key
+			if minKey == "" || key < minKey {
+				minKey = key
+				minIdx = i
+			}
+		}
+		if minIdx == -1 {
+			break
+		}
 
-		bloom.Add(currKeys[minIndex])
-		prefixFilter.Add(currKeys[minIndex])
-		merkle.AddLeaf(currValues[minIndex])
+		value := streams[minIdx][indices[minIdx]].value
 
-		fullVal := append(ss_parser.SizeAndValueToBytes(currKeys[minIndex]), ss_parser.SizeAndValueToBytes(currValues[minIndex])...)
+		for i, stream := range streams {
+			if indices[i] < len(stream) && stream[indices[i]].key == minKey {
+				indices[i]++
+			}
+		}
+
+		bloom.Add(minKey)
+		prefixFilter.Add(minKey)
+		merkle.AddLeaf(value)
+
+		fullVal := append(ss_parser.SizeAndValueToBytes(minKey), ss_parser.SizeAndValueToBytes(value)...)
 		newBlockNum := fw.Write(fullVal, false, nil)
 		if newBlockNum != lastBlockNum {
 			lastBlockNum = newBlockNum
 			indexEntries = append(indexEntries, ss_parser.IndexEntry{
-				Key:    currKeys[minIndex],
+				Key:    minKey,
 				Offset: int64(newBlockNum) * int64(CONFIG.BlockSize),
 			})
 		}
-
-		currKeys[minIndex] = ""
-		updateValsAndCounts(currKeys, currValues, counts, pool)
 	}
-	fw.Write(nil, true, nil) // flush last data block
+	fw.Write(nil, true, nil)
 
 	bt_bf, _ := bloom.SerializeToByteArray()
 	bt_pbf, _ := prefixFilter.SerializeToByteArray()
 
 	indexBytes := ss_parser.SerializeIndex(indexEntries)
-	indexOffset, _ := fw.WriteRaw(indexBytes) //nolint:errcheck
+	indexOffset, _ := fw.WriteRaw(indexBytes)
 
 	filterBytes := ss_parser.SerializeFilterSection(bt_bf, bt_pbf, merkle.GetRootBytes())
-	filterOffset, _ := fw.WriteRaw(filterBytes) //nolint:errcheck
+	filterOffset, _ := fw.WriteRaw(filterBytes)
 
 	footer := ss_parser.SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(totalItems))
 	fw.WriteRaw(footer) //nolint:errcheck

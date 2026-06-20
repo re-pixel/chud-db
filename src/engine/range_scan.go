@@ -2,7 +2,7 @@ package engine
 
 import (
 	"fmt"
-	"nosqlEngine/src/service/retriever"
+	"nosqlEngine/src/utils"
 )
 
 type RangeIterator struct {
@@ -63,8 +63,6 @@ func (engine *Engine) RangeScan(user string, start string, end string, pageNum i
 func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]string, error) {
 	results := make(map[string]string)
 
-	// Scan active memtable then immutables newest-first.
-	// Keys recorded from a newer layer shadow older layers.
 	inRange := func(key string) bool {
 		return key >= start && key <= end
 	}
@@ -76,7 +74,6 @@ func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]
 	}
 	for _, im := range engine.immQueue.Snapshot() {
 		for _, kv := range im.ToRaw() {
-			fmt.Println(kv.GetKey(), kv.GetValue())
 			if inRange(kv.GetKey()) {
 				if _, seen := results[kv.GetKey()]; !seen {
 					results[kv.GetKey()] = kv.GetValue()
@@ -85,16 +82,23 @@ func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]
 		}
 	}
 
-	mretriever := retriever.NewMultiRetriever(engine.block_manager)
-	retriever_results, err := mretriever.GetRangeEntries(start, end)
-	fmt.Print(retriever_results, results)
-	if err != nil {
-		fmt.Print("Failed to retrieve results from SSTables")
-	}
-	for key, value := range retriever_results {
-		if _, exists := results[key]; !exists {
-			results[key] = value
+	for level := 0; level < CONFIG.LSMLevels; level++ {
+		for _, path := range utils.ListSSTablesInLevel(engine.dataRoot, level) {
+			reader, err := engine.tableCache.GetOrOpen(path)
+			if err != nil {
+				continue
+			}
+			ssResults, err := reader.RangeScan(start, end)
+			if err != nil {
+				continue
+			}
+			for key, value := range ssResults {
+				if _, exists := results[key]; !exists {
+					results[key] = value
+				}
+			}
 		}
 	}
+
 	return results, nil
 }

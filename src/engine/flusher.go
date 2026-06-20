@@ -17,7 +17,7 @@ func (e *Engine) runFlusher() {
 		e.immQueue.PopFront()
 		im.MarkFlushed()
 		if !e.skipCompaction {
-			e.ss_compacter.CheckCompactionConditions(e.block_manager, e.dataRoot)
+			e.ss_compacter.CheckCompactionConditions(e.block_manager, e.dataRoot, e.tableCache)
 		}
 	}
 }
