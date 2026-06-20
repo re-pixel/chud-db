@@ -15,7 +15,7 @@ type AppendStorage interface {
 	DurableLSN() uint64
 	AppendedLSN() uint64
 	Close() error
-	Purge() error
+	PurgeUpTo(checkpointLSN uint64) error
 
 	ListSegments() ([]SegmentInfo, error)
 	OpenSegmentReader(segmentID uint64) (SegmentReader, error)

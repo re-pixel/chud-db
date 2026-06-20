@@ -15,7 +15,7 @@ func makeSnapshot(pairs ...string) []key_value.KeyValue {
 }
 
 func TestImmutableGet(t *testing.T) {
-	im := NewImmutableMemtable(makeSnapshot("b", "2", "a", "1", "c", "3"))
+	im := NewImmutableMemtable(makeSnapshot("b", "2", "a", "1", "c", "3"), 0)
 
 	for _, tc := range []struct{ key, want string }{
 		{"a", "1"}, {"b", "2"}, {"c", "3"},
@@ -33,7 +33,7 @@ func TestImmutableGet(t *testing.T) {
 
 func TestImmutableTombstoneHiddenFromGet(t *testing.T) {
 	ts := tombstone
-	im := NewImmutableMemtable(makeSnapshot("gone", ts, "alive", "yes"))
+	im := NewImmutableMemtable(makeSnapshot("gone", ts, "alive", "yes"), 0)
 
 	if _, ok := im.Get("gone"); ok {
 		t.Error("Get should return false for tombstone")
@@ -53,7 +53,7 @@ func TestImmutableTombstoneHiddenFromGet(t *testing.T) {
 }
 
 func TestImmutableToRawIsCopy(t *testing.T) {
-	im := NewImmutableMemtable(makeSnapshot("k", "v"))
+	im := NewImmutableMemtable(makeSnapshot("k", "v"), 0)
 	r1 := im.ToRaw()
 	r2 := im.ToRaw()
 	if &r1[0] == &r2[0] {
@@ -62,7 +62,7 @@ func TestImmutableToRawIsCopy(t *testing.T) {
 }
 
 func TestImmutableSortedAfterConstruction(t *testing.T) {
-	im := NewImmutableMemtable(makeSnapshot("c", "3", "a", "1", "b", "2"))
+	im := NewImmutableMemtable(makeSnapshot("c", "3", "a", "1", "b", "2"), 0)
 	raw := im.ToRaw()
 	for i := 1; i < len(raw); i++ {
 		if raw[i-1].GetKey() >= raw[i].GetKey() {
@@ -72,7 +72,7 @@ func TestImmutableSortedAfterConstruction(t *testing.T) {
 }
 
 func TestImmutableMarkAndWaitFlushed(t *testing.T) {
-	im := NewImmutableMemtable(makeSnapshot("k", "v"))
+	im := NewImmutableMemtable(makeSnapshot("k", "v"), 0)
 
 	done := make(chan struct{})
 	go func() {
@@ -92,7 +92,7 @@ func TestImmutableFromAllBackends(t *testing.T) {
 				mt.Add(fmt.Sprintf("k%02d", i), fmt.Sprintf("v%d", i))
 			}
 			snap := mt.TakeSnapshot()
-			im := NewImmutableMemtable(snap)
+			im := NewImmutableMemtable(snap, 0)
 
 			if im.Len() != 10 {
 				t.Fatalf("Len = %d, want 10", im.Len())

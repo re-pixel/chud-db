@@ -177,26 +177,30 @@ func (s *AppendFileStorage) Close() error {
 	return s.closeLocked()
 }
 
-func (s *AppendFileStorage) Purge() error {
+func (s *AppendFileStorage) PurgeUpTo(checkpointLSN uint64) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if err := s.closeLocked(); err != nil {
-		return err
-	}
 
 	segments, err := s.listSegments()
 	if err != nil {
 		return err
 	}
-	for _, segment := range segments {
-		if err := os.Remove(segment.Path); err != nil {
-			return fmt.Errorf("failed to delete segment %s: %w", segment.Path, err)
+	for _, seg := range segments {
+		if seg.ID == s.segmentID {
+			continue
+		}
+		maxLSN, err := maxLSNInSegment(seg.Path)
+		if err != nil {
+			return fmt.Errorf("failed to read segment %s: %w", seg.Path, err)
+		}
+		if maxLSN > checkpointLSN {
+			break
+		}
+		if err := os.Remove(seg.Path); err != nil {
+			return fmt.Errorf("failed to delete segment %s: %w", seg.Path, err)
 		}
 	}
-
-	s.nextLSN = 1
-	return s.openNewSegment(1)
+	return nil
 }
 
 func (s *AppendFileStorage) ListSegments() ([]SegmentInfo, error) {

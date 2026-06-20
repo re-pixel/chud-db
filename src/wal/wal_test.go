@@ -156,23 +156,38 @@ func TestGroupCommitDurableWithoutCleanShutdown(t *testing.T) {
 }
 
 func TestPurge(t *testing.T) {
-	store, err := storage.NewAppendStorageInDir(t.TempDir(), 1<<20, 64)
+	// Record size for key "k" / value "v" is 27 bytes; segment size 27 triggers
+	// rotation immediately after the first record, so segment 1 is completed
+	// and segment 2 becomes the active one after the second write.
+	store, err := storage.NewAppendStorageInDir(t.TempDir(), 27, 64)
 	if err != nil {
 		t.Fatalf("NewAppendStorageInDir failed: %v", err)
 	}
 
 	w := NewWALWithStorage(store, "group")
-	if err := w.WritePut("key1", "value1"); err != nil {
-		t.Fatalf("WritePut failed: %v", err)
+	lsn1, err := w.AppendPut("k", "v")
+	if err != nil {
+		t.Fatalf("AppendPut failed: %v", err)
 	}
 	if err := w.Flush(); err != nil {
 		t.Fatalf("Flush failed: %v", err)
 	}
-	if err := w.Purge(); err != nil {
-		t.Fatalf("Purge failed: %v", err)
+	if _, err := w.AppendPut("k2", "v2"); err != nil {
+		t.Fatalf("AppendPut failed: %v", err)
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatalf("Flush failed: %v", err)
 	}
 
-	if records := readRecords(t, store); len(records) != 0 {
-		t.Fatalf("expected no records after purge, got %d", len(records))
+	if err := w.PurgeUpTo(lsn1); err != nil {
+		t.Fatalf("PurgeUpTo failed: %v", err)
+	}
+
+	records := readRecords(t, store)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record after PurgeUpTo, got %d", len(records))
+	}
+	if string(records[0].Key) != "k2" {
+		t.Fatalf("expected key2 to remain, got %q", records[0].Key)
 	}
 }

@@ -285,36 +285,43 @@ func TestReopenWithEmptyLastSegment(t *testing.T) {
 }
 
 func TestPurge(t *testing.T) {
-	store := newTestStorage(t, 1<<20)
+	// Record size for key "k" / value "v" is 27 bytes; segment size 27 triggers
+	// rotation immediately after the first record, so segment 1 is completed
+	// and segment 2 becomes the active one after the second write.
+	store := newTestStorage(t, 27)
 
-	if _, err := store.Append(record.OpPut, []byte("key1"), []byte("value1")); err != nil {
+	lsn1, err := store.Append(record.OpPut, []byte("k"), []byte("v"))
+	if err != nil {
 		t.Fatalf("Append failed: %v", err)
 	}
 	if err := store.Sync(); err != nil {
 		t.Fatalf("Sync failed: %v", err)
 	}
 
-	segments, err := store.ListSegments()
+	if _, err := store.Append(record.OpPut, []byte("k2"), []byte("v2")); err != nil {
+		t.Fatalf("Append k2 failed: %v", err)
+	}
+	if err := store.Sync(); err != nil {
+		t.Fatalf("Sync failed: %v", err)
+	}
+
+	segsBefore, err := store.ListSegments()
 	if err != nil {
 		t.Fatalf("ListSegments failed: %v", err)
 	}
-	if len(segments) == 0 {
-		t.Fatal("expected segments before purge")
+	if len(segsBefore) < 2 {
+		t.Fatalf("expected at least 2 segments before PurgeUpTo, got %d", len(segsBefore))
 	}
 
-	if err := store.Purge(); err != nil {
-		t.Fatalf("Purge failed: %v", err)
+	if err := store.PurgeUpTo(lsn1); err != nil {
+		t.Fatalf("PurgeUpTo failed: %v", err)
 	}
 
-	if records := readAllRecords(t, store); len(records) != 0 {
-		t.Fatalf("expected no records after purge, got %d", len(records))
+	records := readAllRecords(t, store)
+	if len(records) != 1 {
+		t.Fatalf("expected 1 record after PurgeUpTo, got %d", len(records))
 	}
-
-	lsn, err := store.Append(record.OpPut, []byte("key2"), []byte("value2"))
-	if err != nil {
-		t.Fatalf("Append after purge failed: %v", err)
-	}
-	if lsn != 1 {
-		t.Fatalf("expected LSN to reset to 1, got %d", lsn)
+	if !bytes.Equal(records[0].Key, []byte("k2")) {
+		t.Fatalf("expected k2 to remain, got %q", records[0].Key)
 	}
 }

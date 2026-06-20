@@ -12,15 +12,21 @@ var immutableConfig = appconfig.GetConfig()
 // been promoted for flushing. It remains readable until MarkFlushed is called.
 type ImmutableMemtable struct {
 	data    []key_value.KeyValue
+	maxLSN  uint64
 	flushed chan struct{}
 }
 
-func NewImmutableMemtable(snapshot []key_value.KeyValue) *ImmutableMemtable {
+func NewImmutableMemtable(snapshot []key_value.KeyValue, maxLSN uint64) *ImmutableMemtable {
 	key_value.SortByKeys(&snapshot)
 	return &ImmutableMemtable{
 		data:    snapshot,
+		maxLSN:  maxLSN,
 		flushed: make(chan struct{}),
 	}
+}
+
+func (im *ImmutableMemtable) MaxLSN() uint64 {
+	return im.maxLSN
 }
 
 func (im *ImmutableMemtable) Get(key string) (string, bool) {

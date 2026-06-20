@@ -26,13 +26,6 @@ func TestWALReplayInlineFlush(t *testing.T) {
 			t.Fatalf("Write[%d]: %v", i, err)
 		}
 	}
-	// Graceful shutdown: flushes active memtable and WAL to disk before eng2 starts.
-	// Without this, eng1's background flusher races with eng2's WAL replay and
-	// may Purge() entries that haven't been written to an SSTable yet.
-	if err := eng1.Shut(); err != nil {
-		t.Fatalf("eng1.Shut: %v", err)
-	}
-
 	eng2, err := NewBenchEngine(benchDir)
 	if err != nil {
 		t.Fatalf("NewBenchEngine restart: %v", err)

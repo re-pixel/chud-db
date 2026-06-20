@@ -56,7 +56,7 @@ func (engine *Engine) applyWrite(user, key, value string, fromWal bool) error {
 	}
 
 	if !fromWal && writeMem.GetSize() >= CONFIG.MemtableSize {
-		im := memtable.NewImmutableMemtable(writeMem.ToRaw())
+		im := memtable.NewImmutableMemtable(writeMem.ToRaw(), lsn)
 		engine.immQueue.Push(im)
 		engine.swapActiveMem(writeMem)
 	}

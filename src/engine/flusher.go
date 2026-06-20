@@ -13,7 +13,7 @@ func (e *Engine) runFlusher() {
 			return
 		}
 		e.ss_parser.FlushMemtable(im.ToRaw())
-		e.wal.Purge()
+		e.wal.PurgeUpTo(im.MaxLSN())
 		e.immQueue.PopFront()
 		im.MarkFlushed()
 		if !e.skipCompaction {

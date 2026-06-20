@@ -67,16 +67,7 @@ func (c *countingStorage) AppendedLSN() uint64 {
 
 func (c *countingStorage) Close() error { return nil }
 
-func (c *countingStorage) Purge() error {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	c.nextLSN = 1
-	c.appendedLSN = 0
-	c.durableLSN = 0
-	c.records = nil
-	c.durableLen = 0
-	return nil
-}
+func (c *countingStorage) PurgeUpTo(_ uint64) error { return nil }
 
 func (c *countingStorage) ListSegments() ([]storage.SegmentInfo, error) {
 	return []storage.SegmentInfo{{ID: 1}}, nil

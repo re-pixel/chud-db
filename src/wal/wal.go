@@ -100,6 +100,10 @@ func (w *WAL) WriteDelete(key string) error {
 	return w.WaitDurable(lsn)
 }
 
+func (w *WAL) AppendedLSN() uint64 {
+	return w.store.AppendedLSN()
+}
+
 func (w *WAL) Flush() error {
 	return w.store.Sync()
 }
@@ -108,6 +112,6 @@ func (w *WAL) Close() error {
 	return w.store.Close()
 }
 
-func (w *WAL) Purge() error {
-	return w.store.Purge()
+func (w *WAL) PurgeUpTo(checkpointLSN uint64) error {
+	return w.store.PurgeUpTo(checkpointLSN)
 }

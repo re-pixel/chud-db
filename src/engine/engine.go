@@ -108,7 +108,7 @@ func (engine *Engine) drainActiveMem() {
 	if mem.GetSize() == 0 {
 		return
 	}
-	im := memtable.NewImmutableMemtable(mem.ToRaw())
+	im := memtable.NewImmutableMemtable(mem.ToRaw(), engine.wal.AppendedLSN())
 	engine.immQueue.Push(im)
 	engine.swapActiveMem(mem)
 }
