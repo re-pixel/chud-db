@@ -209,7 +209,11 @@ func handlePrefixScan(eng *engine.Engine, parts []string) {
 	prefix := parts[1]
 	pageNum, _ := strconv.Atoi(parts[2])
 	pageSize, _ := strconv.Atoi(parts[3])
-	results := eng.PrefixScan(user, prefix, pageNum, pageSize)
+	results, err := eng.PrefixScan(user, prefix, pageNum, pageSize)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	for i, record := range results {
 		fmt.Printf("%s[%d]%s Key: %s, Value: %s\n", ColorBlue, i+1, ColorReset, record[0], record[1])
 	}
@@ -221,7 +225,11 @@ func handleRangeScan(eng *engine.Engine, parts []string) {
 	end := parts[2]
 	pageNum, _ := strconv.Atoi(parts[3])
 	pageSize, _ := strconv.Atoi(parts[4])
-	results := eng.RangeScan(user, start, end, pageNum, pageSize)
+	results, err := eng.RangeScan(user, start, end, pageNum, pageSize)
+	if err != nil {
+		fmt.Printf("Error: %v\n", err)
+		return
+	}
 	for i, record := range results {
 		fmt.Printf("%s[%d]%s Key: %s, Value: %s\n", ColorBlue, i+1, ColorReset, record[0], record[1])
 	}

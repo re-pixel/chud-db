@@ -1,107 +1,42 @@
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"nosqlEngine/src/sstable"
+)
 
-type RangeIterator struct {
-	data    [][]string
-	index   int
-	stopped bool
-}
-
-func NewRangeIterator(results map[string]string) *RangeIterator {
-	iterator_data := SortKeysAndVals(results)
-	return &RangeIterator{data: iterator_data, index: 0, stopped: false}
-}
-
-func (ri *RangeIterator) Next() (string, string, bool) {
-	if ri.stopped || ri.index >= len(ri.data) {
-		return "", "", false
-	}
-
-	key := ri.data[ri.index][0]
-	value := ri.data[ri.index][1]
-	ri.index++
-
-	hasNext := ri.index < len(ri.data)
-	return key, value, hasNext
-}
-
-func (ri *RangeIterator) Stop() {
-	ri.stopped = true
-}
-
-func (ri *RangeIterator) Reset() {
-	ri.index = 0
-	ri.stopped = false
-}
-
-func (ri *RangeIterator) HasNext() bool {
-	return !ri.stopped && ri.index < len(ri.data)
-}
-
-func (engine *Engine) RangeIterate(user string, start string, end string) (*RangeIterator, error) {
-	if ok, err := engine.userLimiter.CheckUserTokens(user); !ok {
-		return nil, fmt.Errorf("user %s is not allowed to read: %w", user, err)
+func (engine *Engine) RangeIterate(user string, start string, end string) (*Iterator, error) {
+	if !engine.skipRateLimit {
+		if ok, err := engine.userLimiter.CheckUserTokens(user); !ok {
+			return nil, fmt.Errorf("user %s is not allowed to read: %w", user, err)
+		}
 	}
 	results, err := engine.findAllRangeMatches(start, end)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find range matches: %w", err)
 	}
-	return NewRangeIterator(results), nil
+	return newIterator(results), nil
 }
 
-func (engine *Engine) RangeScan(user string, start string, end string, pageNum int, pageSize int) [][]string {
-	results, _ := engine.findAllRangeMatches(start, end)
-
-	sorted := SortKeysAndVals(results)
-	return sorted[min(len(sorted), (pageNum-1)*pageSize):min(len(sorted), pageNum*pageSize)]
+func (engine *Engine) RangeScan(user string, start string, end string, pageNum int, pageSize int) ([][]string, error) {
+	if !engine.skipRateLimit {
+		if ok, err := engine.userLimiter.CheckUserTokens(user); !ok {
+			return nil, fmt.Errorf("user %s is not allowed to read: %w", user, err)
+		}
+	}
+	results, err := engine.findAllRangeMatches(start, end)
+	if err != nil {
+		return nil, err
+	}
+	sorted := sortedPairs(results)
+	lo := min(len(sorted), (pageNum-1)*pageSize)
+	hi := min(len(sorted), pageNum*pageSize)
+	return sorted[lo:hi], nil
 }
 
-func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]string, error) {
-	results := make(map[string]string)
-
-	inRange := func(key string) bool {
-		return key >= start && key <= end
-	}
-
-	for _, kv := range engine.loadActiveMem().ToRaw() {
-		if inRange(kv.GetKey()) && kv.GetValue() != CONFIG.Tombstone {
-			results[kv.GetKey()] = kv.GetValue()
-		}
-	}
-	for _, im := range engine.immQueue.Snapshot() {
-		for _, kv := range im.ToRaw() {
-			if inRange(kv.GetKey()) {
-				if _, seen := results[kv.GetKey()]; !seen && kv.GetValue() != CONFIG.Tombstone {
-					results[kv.GetKey()] = kv.GetValue()
-				}
-			}
-		}
-	}
-
-	versions, unlock := engine.lockVersions()
-	defer unlock()
-	for i, paths := range versions {
-		ordered := paths
-		if i == 0 {
-			ordered = reversedPaths(paths)
-		}
-		for _, path := range ordered {
-			reader, err := engine.tableCache.GetOrOpen(path)
-			if err != nil {
-				continue
-			}
-			ssResults, err := reader.RangeScan(start, end)
-			if err != nil {
-				continue
-			}
-			for key, value := range ssResults {
-				if _, exists := results[key]; !exists && value != CONFIG.Tombstone {
-					results[key] = value
-				}
-			}
-		}
-	}
-
-	return results, nil
+func (engine *Engine) findAllRangeMatches(start, end string) (map[string]string, error) {
+	return engine.scan(
+		func(key string) bool { return key >= start && key <= end },
+		func(r *sstable.SSTableReader) (map[string]string, error) { return r.RangeScan(start, end) },
+	)
 }
