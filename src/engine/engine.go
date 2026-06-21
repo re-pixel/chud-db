@@ -31,6 +31,8 @@ type Engine struct {
 	writeCh        chan writeReq
 	writerWG       sync.WaitGroup
 	flusherWG      sync.WaitGroup
+	compactCh      chan struct{}
+	compactionWG   sync.WaitGroup
 	dataRoot       string
 	skipRateLimit  bool
 	skipCompaction bool
@@ -61,6 +63,7 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 		block_manager:  bm,
 		tableCache:     sstable.NewTableCache(CONFIG.TableCacheSize, bm),
 		writeCh:        make(chan writeReq, 256),
+		compactCh:      make(chan struct{}, 1),
 		dataRoot:       dataRoot,
 		skipRateLimit:  skipRateLimit,
 		skipCompaction: skipCompaction,
@@ -87,6 +90,18 @@ func (engine *Engine) swapActiveMem(old memtable.Memtable) {
 	old.Clear()
 }
 
+func (engine *Engine) startCompactor() {
+	engine.compactionWG.Add(1)
+	go engine.runCompactor()
+}
+
+func (engine *Engine) runCompactor() {
+	defer engine.compactionWG.Done()
+	for range engine.compactCh {
+		engine.ss_compacter.CheckCompactionConditions(engine.block_manager, engine.dataRoot, engine.tableCache)
+	}
+}
+
 func (engine *Engine) Start() {
 	err := engine.wal.ReplayFunc(func(entry wal.Entry) error {
 		value := entry.Value
@@ -100,6 +115,7 @@ func (engine *Engine) Start() {
 		return
 	}
 	engine.startFlusher()
+	engine.startCompactor()
 	engine.startWriter()
 }
 
@@ -118,5 +134,7 @@ func (engine *Engine) Shut() error {
 	engine.drainActiveMem()
 	engine.immQueue.Close()
 	engine.flusherWG.Wait()
+	close(engine.compactCh)
+	engine.compactionWG.Wait()
 	return engine.wal.Flush()
 }
