@@ -95,6 +95,69 @@ func BenchmarkPutSequential(b *testing.B) {
 	reportOpsPerSec(b, "puts/sec")
 }
 
+// BenchmarkPutThroughput measures raw write throughput without waiting for
+// flushes on every iteration. It drains the immutable queue once at the end.
+func BenchmarkPutThroughput(b *testing.B) {
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := eng.Write(benchUser, benchKey("tput", i), benchValue, false); err != nil {
+			b.Fatalf("Write: %v", err)
+		}
+	}
+	b.StopTimer()
+	eng.WaitForPendingFlushes()
+	reportOpsPerSec(b, "puts/sec")
+}
+
+// BenchmarkPutThroughputParallel measures concurrent raw write throughput.
+func BenchmarkPutThroughputParallel(b *testing.B) {
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("tput-par-%d-%d", i, b.N)
+			if err := eng.Write(benchUser, key, benchValue, false); err != nil {
+				b.Errorf("Write: %v", err)
+			}
+			i++
+		}
+	})
+	b.StopTimer()
+	eng.WaitForPendingFlushes()
+	reportOpsPerSec(b, "puts/sec")
+}
+
+// BenchmarkPutBurst fires N goroutines concurrently in a single burst to
+// maximise WAL group-commit batching. Reports total throughput over the burst.
+func BenchmarkPutBurst(b *testing.B) {
+	const concurrency = 64
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	for iter := 0; iter < b.N; iter++ {
+		errs := make(chan error, concurrency)
+		for g := 0; g < concurrency; g++ {
+			go func(g int) {
+				key := fmt.Sprintf("burst-%d-%d", iter, g)
+				errs <- eng.Write(benchUser, key, benchValue, false)
+			}(g)
+		}
+		for g := 0; g < concurrency; g++ {
+			if err := <-errs; err != nil {
+				b.Errorf("Write: %v", err)
+			}
+		}
+	}
+	b.StopTimer()
+	eng.WaitForPendingFlushes()
+	// Report throughput as total writes / elapsed time.
+	b.ReportMetric(float64(b.N*concurrency)/b.Elapsed().Seconds(), "puts/sec")
+}
+
 func BenchmarkPutParallel(b *testing.B) {
 	eng, _ := setupBenchEngine(b)
 
