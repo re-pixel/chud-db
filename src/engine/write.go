@@ -69,5 +69,6 @@ func (engine *Engine) replayFlush(mem memtable.Memtable) {
 	engine.activeMemMu.Lock()
 	engine.activeMem = memtable.NewMemtable()
 	engine.activeMemMu.Unlock()
-	engine.ss_parser.FlushMemtable(snapshot)
+	path := engine.ss_parser.FlushMemtable(snapshot)
+	engine.registerSSTable(0, path)
 }
