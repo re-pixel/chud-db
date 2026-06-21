@@ -142,31 +142,35 @@ func BenchmarkGetMemtableHit(b *testing.B) {
 func BenchmarkGetSSTable(b *testing.B) {
 	eng, dir := setupBenchEngine(b)
 
-	// Two entries fill the byte-sized memtable (MEMTABLE_SIZE=20) and trigger flush.
-	keys := []string{"key1", "key2"}
-	vals := []string{"value1", "value2"}
-	for i, key := range keys {
-		if err := eng.Write(benchUser, key, vals[i], false); err != nil {
+	// Write enough entries to exceed MEMTABLE_SIZE bytes and trigger a flush.
+	// Each entry is smallKey + smallValue bytes; write one more than the threshold.
+	flushCount := cfg.MemtableSize/smallEntryBytes() + 1
+	keys := make([]string, flushCount)
+	val := smallValue()
+	for i := 0; i < flushCount; i++ {
+		keys[i] = smallKey(i)
+		if err := eng.Write(benchUser, keys[i], val, false); err != nil {
 			b.Fatalf("preload Write: %v", err)
 		}
 	}
 	eng.WaitForPendingFlushes()
 	waitForSSTable(b, dir)
 
-	// Clear hot keys from memtable so reads fall through to SSTables.
-	if err := eng.Write(benchUser, "key3", "value3", false); err != nil {
-		b.Fatalf("memtable clear Write: %v", err)
+	// Push a few more entries to ensure flushed keys are no longer in the active memtable.
+	for i := flushCount; i < flushCount+5; i++ {
+		if err := eng.Write(benchUser, smallKey(i), val, false); err != nil {
+			b.Fatalf("evict Write: %v", err)
+		}
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		key := keys[i%len(keys)]
-		want := vals[i%len(vals)]
 		got, found, err := eng.Read(benchUser, key)
 		if err != nil {
 			b.Fatalf("Read: %v", err)
 		}
-		if !found || got != want {
+		if !found || got != val {
 			b.Fatalf("Read miss for %q (expected SSTable hit)", key)
 		}
 	}
