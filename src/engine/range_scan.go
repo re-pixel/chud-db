@@ -1,9 +1,6 @@
 package engine
 
-import (
-	"fmt"
-	"nosqlEngine/src/utils"
-)
+import "fmt"
 
 type RangeIterator struct {
 	data    [][]string
@@ -82,8 +79,10 @@ func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]
 		}
 	}
 
-	for level := 0; level < CONFIG.LSMLevels; level++ {
-		for _, path := range utils.ListSSTablesInLevel(engine.dataRoot, level) {
+	versions, unlock := engine.lockVersions()
+	defer unlock()
+	for _, paths := range versions {
+		for _, path := range paths {
 			reader, err := engine.tableCache.GetOrOpen(path)
 			if err != nil {
 				continue

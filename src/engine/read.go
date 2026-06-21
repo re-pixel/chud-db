@@ -1,9 +1,6 @@
 package engine
 
-import (
-	"fmt"
-	"nosqlEngine/src/utils"
-)
+import "fmt"
 
 func (engine *Engine) Read(user string, key string) (string, bool, error) {
 	if !engine.skipRateLimit {
@@ -26,8 +23,10 @@ func (engine *Engine) Read(user string, key string) (string, bool, error) {
 }
 
 func (engine *Engine) readFromSSTables(key string) (string, bool, error) {
-	for level := 0; level < CONFIG.LSMLevels; level++ {
-		for _, path := range utils.ListSSTablesInLevel(engine.dataRoot, level) {
+	versions, unlock := engine.lockVersions()
+	defer unlock()
+	for _, paths := range versions {
+		for _, path := range paths {
 			reader, err := engine.tableCache.GetOrOpen(path)
 			if err != nil {
 				continue

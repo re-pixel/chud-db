@@ -138,8 +138,15 @@ func TestPrefixScan(t *testing.T) {
 func TestCompacter(t *testing.T) {
 	bm := b.NewBlockManager()
 	sc := ss_compacter.NewSSCompacterST()
+	dataRoot := utils.DefaultDataRoot()
 
-	if !sc.CheckCompactionConditions(bm, utils.DefaultDataRoot(), nil) {
+	versions := make([][]string, config.GetConfig().LSMLevels)
+	for level := 0; level < config.GetConfig().LSMLevels; level++ {
+		versions[level] = utils.ListSSTablesInLevel(dataRoot, level)
+	}
+
+	results := sc.CheckCompactionConditions(bm, dataRoot, versions)
+	if len(results) == 0 {
 		t.Fatalf("Compaction conditions not met")
 	}
 

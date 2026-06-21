@@ -10,7 +10,6 @@ import (
 	"nosqlEngine/src/service/file_writer"
 	"nosqlEngine/src/service/ss_parser"
 	"nosqlEngine/src/sstable"
-	"nosqlEngine/src/utils"
 	"os"
 
 	"github.com/google/uuid"
@@ -24,11 +23,21 @@ func NewSSCompacterST() *SSCompacterST {
 	return &SSCompacterST{}
 }
 
-func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string, tc *sstable.TableCache) bool {
-	level := 0
-	compacted := false
-	for level < CONFIG.LSMLevels {
-		sstFiles := utils.ListSSTablesInLevel(dataRoot, level)
+// CompactionResult describes one completed compaction batch.
+type CompactionResult struct {
+	Level    int
+	NewPath  string
+	OldPaths []string
+}
+
+// CheckCompactionConditions inspects the provided version snapshot and merges
+// any levels that exceed the compaction threshold. It returns one
+// CompactionResult per merged batch; file deletion is the caller's responsibility.
+func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string, versions [][]string) []CompactionResult {
+	var results []CompactionResult
+	for level := 0; level < CONFIG.LSMLevels-1; level++ {
+		sstFiles := make([]string, len(versions[level]))
+		copy(sstFiles, versions[level])
 
 		for len(sstFiles) >= CONFIG.CompactionThreshold {
 			toCompact := sstFiles[:CONFIG.CompactionThreshold]
@@ -43,19 +52,16 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 				os.Remove(fw.GetLocation()) //nolint:errcheck
 				continue
 			}
-			for _, file := range toCompact {
-				if tc != nil {
-					tc.Evict(file)
-				} else {
-					bm.CloseFile(file)
-				}
-				os.Remove(file) //nolint:errcheck
-			}
-			compacted = true
+			oldPaths := make([]string, len(toCompact))
+			copy(oldPaths, toCompact)
+			results = append(results, CompactionResult{
+				Level:    level,
+				NewPath:  fw.GetLocation(),
+				OldPaths: oldPaths,
+			})
 		}
-		level++
 	}
-	return compacted
+	return results
 }
 
 // heapEntry is a min-heap element holding one entry from one input stream.

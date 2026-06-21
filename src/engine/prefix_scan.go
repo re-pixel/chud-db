@@ -2,7 +2,6 @@ package engine
 
 import (
 	"fmt"
-	"nosqlEngine/src/utils"
 	"sort"
 )
 
@@ -99,8 +98,10 @@ func (engine *Engine) findAllPrefixMatches(prefix string) (map[string]string, er
 		}
 	}
 
-	for level := 0; level < CONFIG.LSMLevels; level++ {
-		for _, path := range utils.ListSSTablesInLevel(engine.dataRoot, level) {
+	versions, unlock := engine.lockVersions()
+	defer unlock()
+	for _, paths := range versions {
+		for _, path := range paths {
 			reader, err := engine.tableCache.GetOrOpen(path)
 			if err != nil {
 				continue
