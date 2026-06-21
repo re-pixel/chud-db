@@ -1,379 +1,185 @@
 # NoSQL Engine
 
-## Table of Contents  
-- [Introduction](#introduction)  
-- [Features](#features)  
-- [Installation](#installation)  
-- [Usage](#usage) 
-- [Architecture Overview](#architecture-overview)  
-  - [Write path](#write-path)  
-  - [Read path](#read-path)  
-  - [Data Storage](#data-storage)  
-- [Configuration](#configuration)  
-- [License](#license)  
+A from-scratch **NoSQL key-value storage engine** written in Go, implementing an **LSM-tree** architecture inspired by RocksDB and Cassandra. Built as a learning project toward a distributed database system.
+
+- **Language:** Go 1.23.2
+- **Module:** `nosqlEngine`
+- **Interface:** interactive CLI (`go run ./cmd`) + programmatic API
 
 ---
 
-## Introduction  
-**NoSQL Engine** is a high-performance, production-ready NoSQL database engine written in Go. Designed for speed, reliability, and scalability, it implements modern database technologies including LSM trees, advanced caching, and comprehensive data integrity features. 
+## Architecture
 
-### 🎯 Perfect For
-- **High-throughput applications** requiring fast writes and efficient reads
-- **Time-series data** and append-heavy workloads  
-- **Caching layers** and session storage systems
-- **IoT data collection** and real-time analytics
-- **Microservices** requiring embedded database capabilities
-
-### 🏗️ Architecture Highlights
-Our NoSQL engine draws inspiration from industry leaders like **Apache Cassandra**, **RocksDB**, and **DynamoDB**, implementing:
-- **Log-Structured Merge (LSM) Trees** for optimal write performance
-- **Multi-level caching** with LRU eviction policies  
-- **Advanced indexing** with Bloom filters and Merkle trees
-- **ACID compliance** through Write-Ahead Logging (WAL)
-- **Horizontal scalability** with user-based data partitioning
-
----
-
-## Features 
-
-### 🚀 Core Features
-- **🗃️ SSTable-Based Storage**: Efficient immutable storage with LSM tree architecture
-- **📝 Write-Ahead Logging (WAL)**: Protects data integrity by logging changes before committing them to disk
-- **🧠 Advanced Memtable System**: Configurable in-memory storage with multiple concurrent instances
-- **⚡ Data Caching & Block Management**: LRU-based block cache for optimal performance
-- **🔍 Bloom Filters**: Probabilistic data structures for fast key existence checks
-- **🌳 Merkle Trees**: Data integrity verification and consistency checks
-- **🗜️ SSTable Compaction**: Automated background compaction with configurable thresholds
-
-### 🎯 Query & Data Access Features
-- **🔧 Multi-User Support**: User-based data isolation and access control
-- **🔄 Prefix Iteration**: Efficient prefix-based key scanning and iteration
-- **📄 Range Queries**: Support for key range scanning operations
-- **🗑️ Tombstone Deletion**: Proper deletion handling with tombstone markers
-- **⚖️ Rate Limiting**: Token bucket algorithm for request throttling
-
-### 🛠️ Advanced Features  
-- **📊 Real-time Statistics**: Engine performance metrics and monitoring
-- **🎛️ Configurable Architecture**: Extensive configuration options for all components
-- **🔧 CLI Interface**: Beautiful command-line interface with interactive operations
-- **🧪 Comprehensive Testing**: Full integration and unit test suite
-- **📈 LSM Tree Levels**: Multi-level storage optimization for read/write performance
-
----
-
-## Installation
-
-To get started with this NoSQL engine, follow the steps below to install and set it up on your system.
-
-### Prerequisites
-- **Go 1.19+** (Golang)
-  Make sure Go is installed on your system. You can check your Go version by running:
-  ```bash
-  go version
-  ```
-  If Go is not installed, download it from the official [Go website](https://go.dev/dl/).
-
-- **Git** for cloning the repository
-- **Minimum 4GB RAM** for optimal performance  
-- **SSD storage** recommended for best I/O performance
-
-### 📦 Steps to Install
-
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/IgorAmi52/NoSQL-Engine.git
-   ```
-
-2. **Navigate to the project directory**
-   ```bash
-   cd NoSQL-Engine
-   ```
-
-3. **Install dependencies**
-   ```bash
-   go mod tidy
-   ```
-
-4. **Build the engine**
-   ```bash
-   go build -o nosql-engine ./cmd
-   ```
-
-5. **Run the CLI**
-   ```bash
-   ./nosql-engine
-   ```
-
-### 🐳 Docker Support (Optional)
-```bash
-# Build Docker image
-docker build -t nosql-engine .
-
-# Run in container
-docker run -it --rm nosql-engine
 ```
+Write ──► WAL (group commit) ──► Memtable ──► Immutable queue ──► Flusher ──► SSTable (lvl0)
+                                                                              │
+                                                                    Compactor (size-tiered)
+                                                                              │
+                                                                        SSTable (lvl1..N)
+
+Read ──► Active memtable ──► Immutable queue ──► SSTable levels (bloom → index → data)
+```
+
+### Write path
+
+1. Writes are serialized through a **write queue** (single writer goroutine) — eliminates all write-path locking.
+2. The WAL writer buffers multiple writes per call, then issues **one fsync** covering the entire batch (group commit). Async writes (`WriteAsync`) skip the fsync wait entirely.
+3. Each write goes into the **active memtable** (hash map, skip-list, or B-tree, selectable via config).
+4. When the memtable reaches `MEMTABLE_SIZE` bytes it is sealed into an **immutable memtable** carrying its max LSN and pushed to the immutable queue.
+5. The **flusher goroutine** drains the immutable queue, writing sorted SSTables to `lvl0`. Flush and compaction run concurrently.
+6. When a level accumulates `COMPACTION_THRESHOLD` SSTables, the **compactor goroutine** k-way-merges them into the next level (min-heap, O(N log K)).
+
+### Read path
+
+1. Active memtable (`O(1)` for hash map, `O(log n)` for skip-list/B-tree).
+2. Immutable queue, newest-first.
+3. SSTables: level 0 newest-first, levels 1+ in order. Per table: Bloom filter → in-memory dense index → block-aligned data read via LRU block cache.
+
+### SSTable format
+
+Single-file layout, all fields big-endian:
+
+```
+[Data blocks][Index block][Filter block][Footer: 56 bytes]
+
+Footer: [indexOffset:8][indexSize:8][filterOffset:8][filterSize:8]
+        [itemCount:8][maxLSN:8][magic:8]
+```
+
+The **Bloom filter** and **dense index** are loaded into memory when an SSTable is first opened (`SSTableReader`). `TableCache` (LRU, configurable capacity) keeps the most recently accessed readers in memory; evicted readers release their file descriptors back to the FD pool in `BlockManager`.
+
+### Concurrency model
+
+| Component | Mechanism |
+|---|---|
+| Write serialization | Single writer goroutine + buffered channel |
+| Memtable reads | `sync.RWMutex` on active mem pointer; inner impl lock-free where possible |
+| Immutable queue | `sync.Mutex` + `sync.Cond` for backpressure |
+| SSTable version registry | `sync.RWMutex`; readers hold RLock for all SSTable I/O |
+| Compaction | Snapshots version list under brief RLock, then works without any lock |
+| Rate limiting | Per-user token buckets |
+
 ---
 
- ## Usage
+## Distribution layer readiness
 
-### 🚀 Getting Started
+Three APIs are implemented to support the first replica joining:
 
-The NoSQL Engine provides a beautiful command-line interface and programmatic API for database operations.
+### WAL streaming (`WALCursor`)
 
-#### **📋 Complete Usage Guide**
-For detailed usage instructions, examples, and advanced operations, please see our comprehensive usage guide:
+```go
+cursor, err := engine.wal.CursorFrom(afterLSN)
+for {
+    entry, err := cursor.Next()
+    if err == io.EOF {
+        <-cursor.Notify() // blocks until durableLSN advances
+        continue
+    }
+    // ship entry to follower
+}
+cursor.Close()
+```
 
-**👉 [CLI_USAGE.md](./CLI_USAGE.md)**
+`Next()` only returns entries that have been fsync'd. `Notify()` is a buffered channel signalled on every WAL flush — no polling needed.
 
-This guide covers:
-- Interactive CLI commands and examples
-- Programmatic API usage
-- Integration testing procedures  
-- Performance optimization tips
-- Troubleshooting and best practices
+### Snapshot export
 
-#### **🏃 Quick Start**
+```go
+snap, err := engine.TakeSnapshot()
+// snap.LSN    — WAL position at snapshot time
+// snap.SSTables — []SnapshotFile{Level, Path, Size}
+// transfer files, then:
+snap.Release() // unpins files; deferred compaction deletions run
+```
+
+`TakeSnapshot` drains the active memtable, waits for all pending flushes, then captures a consistent `{LSN, file list}` pair. Files are reference-counted — compaction cannot delete a pinned file; deletion is deferred until `Release()`.
+
+### Safe compaction LSN gate
+
+```go
+engine.SetSafeCompactionLSN(minReplicaLSN)
+```
+
+Each SSTable footer stores the `maxLSN` of its entries. The compactor gates tombstone dropping on:
+
+```
+dropTombstones = isLastLevel &&
+    (safeCompactionLSN == 0 || (batchMaxLSN > 0 && batchMaxLSN <= safeCompactionLSN))
+```
+
+- `safeCompactionLSN == 0` (default) preserves standalone behaviour — tombstones drop freely.
+- In distributed mode, the distribution layer bumps this as replicas confirm progress, preventing data resurrection on lagging replicas.
+
+---
+
+## Benchmarks
+
+Machine: AMD Ryzen 7 7730U, WSL2 (Linux), `go test -bench=. -benchtime=5s`.  
+All writes are sync-durability (fsync) unless noted. Value size: 64 bytes.
+
+| Benchmark | ops/sec | Notes |
+|---|---|---|
+| `PutSequential` | **697** | Single goroutine, sync, waits flush per op |
+| `PutThroughput` | **764** | Single goroutine, sync, no flush wait per op |
+| `PutThroughputParallel` | **5,937** | 16 goroutines, sync, group commit batching |
+| `PutParallel` | **5,915** | Same as above, different key space |
+| `PutBurst` | **3,327** | 64-goroutine bursts, group commit |
+| `PutAsyncThroughput` | **2,765** | Single goroutine, no fsync wait |
+| `PutAsyncParallel` | **3,466** | 16 goroutines, no fsync wait |
+| `GetMemtableHit` | **410,429** | Active memtable (hash map) |
+| `GetSSTable` | **441,070** | SSTable read via block cache (warm) |
+| `DeleteSequential` | **875** | Write + tombstone, sync |
+
+Key observations:
+- **Sequential sync puts are WAL-bound** — every op pays one fsync (~1.4 ms). The single-writer design means no write amplification from lock contention.
+- **Parallel sync puts show ~8.5x speedup** over sequential. Group commit amortizes the fsync cost across concurrent writers: 16 goroutines sharing one fsync per batch.
+- **SSTable reads match memtable reads** because the block cache keeps hot blocks in memory; the Bloom filter + in-memory dense index avoids most disk seeks entirely.
+- **Async writes** offer a middle ground — WAL-buffered but not fsync'd; useful for bulk ingest where a subsequent sync write or graceful shutdown provides the durability boundary.
+
+---
+
+## Build & run
+
 ```bash
-# Build and run the CLI
-go build -o nosql-engine ./cmd
-./nosql-engine
+go mod tidy
+go build -o bin/nosql-engine ./cmd
+./bin/nosql-engine
 
-# Or run directly
+# or without building:
 go run ./cmd
 ```
 
----
- 
- ## Architecture Overview 
- 
- The NoSQL Engine implements a **Log-Structured Merge (LSM) Tree** architecture designed for high-throughput write operations and efficient reads. The system separates write and read paths to optimize performance for different access patterns.
- 
-### **Write Path** ✍️: 
-  Optimized for fast data ingestion and durability guarantees.      
- 
- ![write path](/assets/write%20path.png)
+### Tests
 
-**1. Write-Ahead Log (WAL)**
-- When a user sends a **PUT** or **DELETE** request, it is first logged in the Write-Ahead Log (WAL)
-- WAL ensures durability by persisting operations before applying them to in-memory structures
-- Implements **segmented logging** with fixed-size segments containing a configurable number of records
-- Each WAL record includes CRC for data integrity verification
-- WAL segments cannot be deleted until data is permanently persisted in SSTables
-
-**2. Memtable**
-- After WAL confirms the write, data is added to the **Memtable** - a strictly in-memory structure
-- Implemented as a hash map with configurable maximum size (specified by number of elements)
-- When the predefined Memtable size is reached, values are sorted by key and a new SSTable is created on disk
-- During system startup, Memtable is populated with records from WAL for crash recovery
-
-**3. SSTable Creation & Compaction**
-- Sorted data from Memtable is written to disk as immutable **SSTables**
-- After SSTable creation, the system checks if compaction conditions are met
-- **Size-tiered compaction algorithm** is triggered when thresholds are exceeded
-- Compactions on one level can trigger compactions on subsequent levels in the LSM tree
-
-**4. Block Manager**
-- Manages all disk I/O operations using fixed-size blocks (4KB, 8KB, or 16KB)
-- All file access must go through the Block Manager layer
-- Supports block-level reading and writing with configurable block sizes
-- Integrates with Block Cache for optimized performance
- 
-### **Read Path** 📖: 
-  Multi-level search strategy optimized for fast data retrieval.
- 
-   ![read path](/assets/read%20path.png)
-
-**Read Operation Flow:**
-
-**1. Memtable Check**
-- When a user sends a **GET** request, first check if the record exists in the Memtable
-- If found, return the result immediately (fastest path)
-
-**2. Cache Layer Check** 
-- If not in Memtable, check the **Cache structure** (LRU-based block cache)
-- Block cache consists of a doubly linked list storing block data and a hash map for constant-time access
-- If found in cache, return the result
-
-**3. SSTable Traversal**
-- Check SSTables one by one, starting from the most recent
-- For each SSTable, load its **Bloom Filter** into memory and query for key presence
-- If Bloom Filter indicates the key is definitely not present, skip to the next SSTable
-- If the key might be present, check additional structures in the current SSTable
-
-**4. LSM Tree Level Traversal**
-- SSTable candidates are determined based on the selected compaction algorithm
-- After unsuccessfully searching all SSTable candidates on one LSM tree level, move to the next level
-- Process repeats until the key is found or the last level is reached
-
-**5. SSTable Internal Search**
-- **Summary Structure**: Check if the key falls within Summary ranges (loaded in memory)
-- If within range, find the position in the **Index structure** to access
-- **Index Structure**: Find the position in the **Data structure** from which to read the record
-- **Data Structure**: Read the actual value and return the response to the user
- 
- ---
- 
- ## Data Storage Components
- 
- The NoSQL Engine implements a sophisticated storage layer with multiple components working together to ensure data durability, integrity, and performance.
- 
- ### 🗂️ Write-Ahead Log (WAL)
- 
- WAL provides **ACID compliance** and crash recovery capabilities:
- 
- ![wal structure](/assets/wal.png)
-
-**Key Features:**
-- **Segmented logging**: Each segment contains a fixed number of records (user-configurable)
-- **Data integrity**: Every WAL record includes CRC fields for corruption detection
-- **Sequential access**: WAL records are read from disk one by one, not loaded entirely into memory
-- **Durability guarantee**: WAL segments cannot be deleted until data is persisted in SSTables
-- **Crash recovery**: On system startup, Memtable is reconstructed from WAL records
-
-**WAL Record Structure:**
-- Timestamp, Key Size, Value Size, Key, Value, CRC, and operation type fields
-- Fixed-length segments with configurable block-based sizing
-- Supports record fragmentation when necessary, with padding applied where needed
-
- ### 🧠 Memtable
- 
-**In-memory structure** optimized for fast writes and reads:
-- **Implementation**: Hash map-based structure for O(1) access time
-- **Configurable size**: Maximum number of elements specified by user
-- **Write operations**: All PUT/DELETE operations first go to Memtable after WAL
-- **Crash recovery**: Automatically populated from WAL segments during startup
-- **Flush trigger**: When maximum size reached, data is sorted and written to SSTable
-
- ### 📊 SSTable (Sorted String Table)
- 
-**Immutable disk-based** storage with multiple specialized components:
- 
- ![index](/assets/index.png)
-
-#### **SSTable Components:**
-
-**1. Data Structure**
-- Stores actual key-value pairs in sorted order
-- Structure can be identical to WAL records or optimized format
-- Accessed **block by block** (cannot load entire structure into memory)
-- Supports tombstone markers for deleted keys
-
-**2. Filter (Bloom Filter)**
-- **Loaded into memory** during read operations
-- Probabilistic data structure for all keys in the Data structure
-- Eliminates unnecessary disk seeks for non-existent keys
-- Configurable false positive rate
-
-**3. Index Structure** 
-- Maps every key to its corresponding offset in Data structure
-- Contains key and offset pairs for efficient lookups
-- Accessed **block by block** to manage memory usage
-- Critical for translating key searches to exact data locations
-
-**4. Summary Structure**
-- **Sparse index** for the Index structure (loaded into memory)
-- Contains boundaries: minimum and maximum key values
-- Configurable sparsity level (e.g., every 5th Index entry)
-- Enables quick range determination before Index access
-
-**5. Metadata (Merkle Tree)**
-- **Data integrity verification** for all values in Data structure
-- User can initiate validation operations to detect corruption
-- System identifies if and where modifications occurred in data structure
-- Essential for distributed system consistency checks
- 
-### 🔧 LSM Tree Organization & Compaction
-
-**Multi-level storage** optimization for balanced read/write performance:
-- **LSM Tree Levels**: User-configurable maximum number of levels
-- **Size-tiered Compaction**: When compaction conditions are met, algorithm merges SSTables
-- **Level Triggering**: Compactions on one level can cascade to subsequent levels
-- **Background Process**: Compaction runs automatically based on configurable thresholds
-- **Performance Optimization**: Reduces read amplification by merging overlapping key ranges
-
- ![index](/assets/lsm tree.png)
- 
-### 📁 Storage Configuration Options
-
-**Flexible storage formats** to suit different use cases:
-- **Single-file SSTable**: All components stored in one file
-- **Multi-file SSTable**: Each component (Data, Index, Summary, Filter, Metadata) in separate files
-- **Backward Compatibility**: Configuration changes don't affect reading existing SSTables
-- **Block-based Access**: All large structures accessed via configurable block sizes (4KB, 8KB, 16KB)
-
----
-
-### 🔍 SSTable Read Operation Details
-
-#### **Memory vs Disk Components During Reads:**
-
-**🧠 In-Memory Components** (loaded during read operations):
-- **Summary**: Sparse key-to-offset mapping for quick Index positioning
-- **Metadata**: SSTable configuration and management information  
-- **Bloom Filter**: Probabilistic key existence checking to avoid unnecessary disk access
-- **Merkle Tree**: Data integrity verification and consistency validation
-
-**💽 On-Disk Components** (accessed on-demand):
-- **Index**: Complete key-to-data-offset mapping (accessed via Summary positioning)
-- **Data**: Actual key-value pairs (accessed via exact Index offsets)
-
-**⚡ Optimized Access Process:**
-1. **Filter Check**: Bloom filter quickly determines if key might exist
-2. **Summary Consultation**: If filter indicates possible match, Summary provides Index position
-3. **Index Lookup**: Exact data offset retrieved from Index structure  
-4. **Data Retrieval**: Direct access to required data without full file scanning
-
-**This multi-layered approach minimizes disk I/O operations and significantly enhances read performance through strategic caching and probabilistic filtering.**
-
-
- ---
-
- ## Configuration
-
-### 🔧 Engine Configuration
-
-The NoSQL engine is highly configurable through the `src/config/config.json` file. Key configuration options include:
-
-#### **Performance Settings**
-- **Block Size**: Configurable block size for optimal I/O performance
-- **Memtable Size & Count**: Control memory usage and flush frequency  
-- **WAL Buffer Size**: Write-ahead log buffer configuration
-- **Compaction Threshold**: Automatic SSTable compaction triggers
-
-#### **LSM Tree Configuration** 
-- **LSM Levels**: Number of storage levels for optimal read/write balance
-- **Compaction Strategy**: Background compaction settings
-
-#### **Filter & Index Settings**
-- **Bloom Filter**: False positive rate and expected element count
-- **Skip List Levels**: In-memory index structure optimization
-- **Prefix Scan**: Min/max prefix length for efficient scanning
-
-#### **Rate Limiting**
-- **Token Bucket**: Request throttling with configurable refill rates
-- **Max Tokens**: Burst capacity for handling traffic spikes
-
-#### **Storage Configuration**
-- **Tombstone Marker**: Configurable deletion marker
-- **WAL Segment Size**: Write-ahead log segment management
-
-Example configuration structure:
-```json
-{
-  "BLOCK_SIZE": 4096,
-  "MEMTABLE_SIZE": 1000,
-  "LSM_LEVELS": 3,
-  "COMPACTION_THRESHOLD": 4,
-  "BLOOM_FILTER_FALSE_POSITIVE_RATE": 0.01,
-  "TOKEN_REFILL_RATE": 0.1,
-  "MAX_TOKEN": 1000
-}
+```bash
+go test ./...                                    # all packages
+go test ./src/tests/integration/ -v              # integration tests
+go test ./src/tests/benchmark/ -bench=. -benchtime=5s  # benchmarks
 ```
 
-For complete configuration options, see the `src/config/config.json` file.
- 
- ---
+**Note:** tests write real files under `data/`. Run from the repo root.  
+**Note:** `config.json` is embedded at compile time — config changes require a rebuild.
 
- ## License
+---
 
- This project is licensed under the MIT License. You are free to use, modify, and distribute this software under the terms of the MIT License.
+## Configuration (`src/config/config.json`)
+
+| Key | Default | Description |
+|---|---|---|
+| `BLOCK_SIZE` | 4096 | Disk I/O block size in bytes |
+| `MEMTABLE_SIZE` | 1000 | Flush threshold in bytes (sum of key+value lengths) |
+| `MEMTABLE_TYPE` | `hashmap` | `hashmap`, `skiplist`, or `btree` |
+| `MAX_IMMUTABLE_COUNT` | 4 | Immutable queue depth before writes block |
+| `WAL_SEGMENT_SIZE` | 65536 | Max bytes per WAL segment file |
+| `WAL_BUFFER_SIZE` | 8 | WAL write buffer slots for group commit |
+| `LSM_LEVELS` | 4 | Number of LSM levels |
+| `COMPACTION_THRESHOLD` | 4 | SSTables per level before compaction |
+| `CACHE_CAPACITY` | 512 | Block cache LRU capacity (number of blocks) |
+| `TABLE_CACHE_SIZE` | 64 | SSTableReader LRU capacity |
+| `BLOOM_FILTER_FALSE_POSITIVE_RATE` | 0.01 | Target Bloom filter FPR |
+
+---
+
+## License
+
+MIT
