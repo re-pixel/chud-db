@@ -22,6 +22,9 @@ type WAL struct {
 	cond       *sync.Cond
 	syncing    bool
 	flushedLSN uint64
+
+	subsMu sync.Mutex
+	subs   []chan struct{}
 }
 
 func NewWAL() (*WAL, error) {
@@ -78,10 +81,108 @@ func (w *WAL) WaitDurable(lsn uint64) error {
 		w.flushedLSN = w.store.DurableLSN()
 		w.syncing = false
 		w.cond.Broadcast()
+		w.notifySubs()
 		if err != nil && lsn > w.flushedLSN {
 			return err
 		}
 	}
+}
+
+// notifySubs sends a non-blocking signal to every subscriber channel.
+// Must be called while w.mu is held (to read flushedLSN consistently).
+func (w *WAL) notifySubs() {
+	w.subsMu.Lock()
+	for _, ch := range w.subs {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
+	w.subsMu.Unlock()
+}
+
+// Subscribe returns a buffered channel that receives a signal whenever the
+// durable LSN advances. The caller must call Unsubscribe when done.
+func (w *WAL) Subscribe() chan struct{} {
+	ch := make(chan struct{}, 1)
+	w.subsMu.Lock()
+	w.subs = append(w.subs, ch)
+	w.subsMu.Unlock()
+	return ch
+}
+
+// Unsubscribe removes a channel previously returned by Subscribe.
+func (w *WAL) Unsubscribe(ch chan struct{}) {
+	w.subsMu.Lock()
+	for i, s := range w.subs {
+		if s == ch {
+			w.subs = append(w.subs[:i], w.subs[i+1:]...)
+			break
+		}
+	}
+	w.subsMu.Unlock()
+}
+
+// DurableLSN returns the highest LSN that has been fsync'd to disk.
+func (w *WAL) DurableLSN() uint64 {
+	return w.store.DurableLSN()
+}
+
+// CursorFrom returns a WALCursor that will deliver every durable entry with
+// LSN > afterLSN in order. The cursor holds a subscriber channel; call
+// Close when done to release it.
+func (w *WAL) CursorFrom(afterLSN uint64) (*WALCursor, error) {
+	segments, err := w.store.ListSegments()
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the index of the first segment that might contain afterLSN+1.
+	// Since LSNs are monotonically increasing across segments, scan forward
+	// and stop at the first segment we haven't fully passed.
+	startIdx := 0
+	active := w.store.ActiveSegment()
+	for i, seg := range segments {
+		if seg.ID == active.ID {
+			break
+		}
+		maxLSN, err := segmentMaxLSN(w.store, seg.ID)
+		if err != nil {
+			return nil, err
+		}
+		if maxLSN <= afterLSN {
+			startIdx = i + 1
+		} else {
+			break
+		}
+	}
+
+	notify := w.Subscribe()
+	return &WALCursor{
+		wal:      w,
+		afterLSN: afterLSN,
+		segIdx:   startIdx,
+		segments: segments,
+		notify:   notify,
+	}, nil
+}
+
+// segmentMaxLSN reads the last LSN in the given segment by scanning all records.
+func segmentMaxLSN(store storage.AppendStorage, segmentID uint64) (uint64, error) {
+	r, err := store.OpenSegmentReader(segmentID)
+	if err != nil {
+		return 0, err
+	}
+	defer r.Close() //nolint:errcheck
+	var maxLSN uint64
+	for {
+		rec, err := r.Next()
+		if err != nil {
+			break
+		}
+		maxLSN = rec.LSN
+	}
+	return maxLSN, nil
 }
 
 func (w *WAL) WritePut(key, value string) error {

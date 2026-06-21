@@ -101,6 +101,8 @@ func (r *sliceReader) Next() (record.Record, error) {
 	return rec, nil
 }
 
+func (r *sliceReader) Close() error { return nil }
+
 // TestGroupCommitBatchesConcurrentWrites verifies that when many records are
 // appended before the leader fsyncs, a single Sync makes them all durable.
 func TestGroupCommitBatchesConcurrentWrites(t *testing.T) {

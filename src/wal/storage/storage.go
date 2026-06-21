@@ -23,4 +23,5 @@ type AppendStorage interface {
 
 type SegmentReader interface {
 	Next() (record.Record, error)
+	Close() error
 }
