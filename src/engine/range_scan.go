@@ -65,14 +65,14 @@ func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]
 	}
 
 	for _, kv := range engine.loadActiveMem().ToRaw() {
-		if inRange(kv.GetKey()) {
+		if inRange(kv.GetKey()) && kv.GetValue() != CONFIG.Tombstone {
 			results[kv.GetKey()] = kv.GetValue()
 		}
 	}
 	for _, im := range engine.immQueue.Snapshot() {
 		for _, kv := range im.ToRaw() {
 			if inRange(kv.GetKey()) {
-				if _, seen := results[kv.GetKey()]; !seen {
+				if _, seen := results[kv.GetKey()]; !seen && kv.GetValue() != CONFIG.Tombstone {
 					results[kv.GetKey()] = kv.GetValue()
 				}
 			}
@@ -81,8 +81,12 @@ func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]
 
 	versions, unlock := engine.lockVersions()
 	defer unlock()
-	for _, paths := range versions {
-		for _, path := range paths {
+	for i, paths := range versions {
+		ordered := paths
+		if i == 0 {
+			ordered = reversedPaths(paths)
+		}
+		for _, path := range ordered {
 			reader, err := engine.tableCache.GetOrOpen(path)
 			if err != nil {
 				continue
@@ -92,7 +96,7 @@ func (engine *Engine) findAllRangeMatches(start string, end string) (map[string]
 				continue
 			}
 			for key, value := range ssResults {
-				if _, exists := results[key]; !exists {
+				if _, exists := results[key]; !exists && value != CONFIG.Tombstone {
 					results[key] = value
 				}
 			}
