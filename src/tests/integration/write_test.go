@@ -140,6 +140,20 @@ func TestCompacter(t *testing.T) {
 	sc := ss_compacter.NewSSCompacterST()
 	dataRoot := utils.DefaultDataRoot()
 
+	// Write exactly CompactionThreshold SSTables into lvl0 so the test is
+	// self-contained and not dependent on leftover files from other runs.
+	threshold := config.GetConfig().CompactionThreshold
+	ssParser := ss_parser.NewSSParser(fw.NewFileWriter(CONFIG.BlockSize, ""))
+	for i := 0; i < threshold; i++ {
+		mt := m.NewMemtable()
+		for j := 0; j < 5; j++ {
+			mt.Add(fmt.Sprintf("compacter-key-%d-%d", i, j), fmt.Sprintf("val-%d-%d", i, j))
+		}
+		raw := mt.ToRaw()
+		kv.SortByKeys(&raw)
+		ssParser.FlushMemtable(raw)
+	}
+
 	versions := make([][]string, config.GetConfig().LSMLevels)
 	for level := 0; level < config.GetConfig().LSMLevels; level++ {
 		versions[level] = utils.ListSSTablesInLevel(dataRoot, level)
