@@ -14,6 +14,8 @@ import (
 	"nosqlEngine/src/wal"
 	"nosqlEngine/src/wal/record"
 	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 )
 
@@ -99,6 +101,13 @@ func (engine *Engine) initVersions() {
 	engine.versions = make([][]string, CONFIG.LSMLevels)
 	for level := 0; level < CONFIG.LSMLevels; level++ {
 		engine.versions[level] = utils.ListSSTablesInLevel(engine.dataRoot, level)
+		dir := utils.SSTableLevelDir(engine.dataRoot, level)
+		entries, _ := os.ReadDir(dir)
+		for _, e := range entries {
+			if strings.HasSuffix(e.Name(), ".db.tmp") {
+				os.Remove(filepath.Join(dir, e.Name())) //nolint:errcheck
+			}
+		}
 	}
 }
 
@@ -140,6 +149,15 @@ func (engine *Engine) installCompaction(level int, newPath string, oldPaths []st
 func (engine *Engine) lockVersions() ([][]string, func()) {
 	engine.versionMu.RLock()
 	return engine.versions, engine.versionMu.RUnlock
+}
+
+// reversedPaths returns a reversed copy of the slice without modifying the original.
+func reversedPaths(s []string) []string {
+	cp := make([]string, len(s))
+	for i, v := range s {
+		cp[len(s)-1-i] = v
+	}
+	return cp
 }
 
 // snapshotVersions returns a deep copy of versions under a brief RLock.
