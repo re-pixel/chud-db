@@ -26,6 +26,7 @@ type SSTableReader struct {
 	prefixFilter *bloom_filter.PrefixBloomFilter
 	index        []ss_parser.IndexEntry
 	itemCount    int64
+	maxLSN       uint64
 	bm           *block_manager.BlockManager
 }
 
@@ -44,7 +45,7 @@ func Open(path string, bm *block_manager.BlockManager) (*SSTableReader, error) {
 		return nil, fmt.Errorf("sstable open: read footer: %w", err)
 	}
 
-	magic := int64(binary.BigEndian.Uint64(footerBytes[40:]))
+	magic := int64(binary.BigEndian.Uint64(footerBytes[48:]))
 	if magic != ss_parser.FooterMagic {
 		return nil, fmt.Errorf("sstable open: bad magic in %s (got %x)", path, uint64(magic))
 	}
@@ -54,6 +55,7 @@ func Open(path string, bm *block_manager.BlockManager) (*SSTableReader, error) {
 	filterOffset := int64(binary.BigEndian.Uint64(footerBytes[16:]))
 	filterSize   := int64(binary.BigEndian.Uint64(footerBytes[24:]))
 	itemCount    := int64(binary.BigEndian.Uint64(footerBytes[32:]))
+	maxLSN       := binary.BigEndian.Uint64(footerBytes[40:])
 
 	indexBytes, err := bm.ReadAt(path, indexOffset, int(indexSize))
 	if err != nil {
@@ -79,9 +81,12 @@ func Open(path string, bm *block_manager.BlockManager) (*SSTableReader, error) {
 		prefixFilter: pbf,
 		index:        index,
 		itemCount:    itemCount,
+		maxLSN:       maxLSN,
 		bm:           bm,
 	}, nil
 }
+
+func (r *SSTableReader) MaxLSN() uint64 { return r.maxLSN }
 
 func (r *SSTableReader) Get(key string) (string, bool, error) {
 	if !r.filter.Check(key) {

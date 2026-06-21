@@ -9,11 +9,8 @@ import (
 
 var CONFIG = config.GetConfig()
 
-// FooterSize is the fixed byte length of the SSTable footer written at the end of the file.
-const FooterSize = 48
-
-// FooterMagic is written as the last 8 bytes of every SSTable footer for integrity validation.
-const FooterMagic = int64(0x0D1AACCE55DB0001)
+const FooterSize = 56
+const FooterMagic = int64(0x0D1AACCE55DB0002)
 
 type IndexEntry struct {
 	Key    string
@@ -58,14 +55,15 @@ func SerializeFilterSection(bf []byte, pbf []byte, merkle []byte) []byte {
 	return buf
 }
 
-func SerializeFooter(indexOffset, indexSize, filterOffset, filterSize, itemCount int64) []byte {
+func SerializeFooter(indexOffset, indexSize, filterOffset, filterSize, itemCount int64, maxLSN uint64) []byte {
 	buf := make([]byte, FooterSize)
 	binary.BigEndian.PutUint64(buf[0:], uint64(indexOffset))
 	binary.BigEndian.PutUint64(buf[8:], uint64(indexSize))
 	binary.BigEndian.PutUint64(buf[16:], uint64(filterOffset))
 	binary.BigEndian.PutUint64(buf[24:], uint64(filterSize))
 	binary.BigEndian.PutUint64(buf[32:], uint64(itemCount))
-	binary.BigEndian.PutUint64(buf[40:], uint64(FooterMagic))
+	binary.BigEndian.PutUint64(buf[40:], maxLSN)
+	binary.BigEndian.PutUint64(buf[48:], uint64(FooterMagic))
 	return buf
 }
 

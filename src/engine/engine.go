@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var CONFIG = config.GetConfig()
@@ -42,9 +43,11 @@ type Engine struct {
 	skipRateLimit  bool
 	skipCompaction bool
 
-	pinnedMu       sync.Mutex
-	pinned         map[string]int // path → active snapshot refcount
-	deferredDeletes []string      // paths evicted by compaction while still pinned
+	pinnedMu        sync.Mutex
+	pinned          map[string]int
+	deferredDeletes []string
+
+	safeCompactionLSN atomic.Uint64
 }
 
 func NewEngine() *Engine {
@@ -219,11 +222,15 @@ func (engine *Engine) startCompactor() {
 	go engine.runCompactor()
 }
 
+func (engine *Engine) SetSafeCompactionLSN(lsn uint64) {
+	engine.safeCompactionLSN.Store(lsn)
+}
+
 func (engine *Engine) runCompactor() {
 	defer engine.compactionWG.Done()
 	for range engine.compactCh {
 		snap := engine.snapshotVersions()
-		results := engine.ss_compacter.CheckCompactionConditions(engine.block_manager, engine.dataRoot, snap)
+		results := engine.ss_compacter.CheckCompactionConditions(engine.block_manager, engine.dataRoot, snap, engine.safeCompactionLSN.Load())
 		for _, r := range results {
 			engine.installCompaction(r.Level, r.NewPath, r.OldPaths)
 		}

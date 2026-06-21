@@ -33,7 +33,7 @@ type CompactionResult struct {
 // CheckCompactionConditions inspects the provided version snapshot and merges
 // any levels that exceed the compaction threshold. It returns one
 // CompactionResult per merged batch; file deletion is the caller's responsibility.
-func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string, versions [][]string) []CompactionResult {
+func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManager, dataRoot string, versions [][]string, safeCompactionLSN uint64) []CompactionResult {
 	var results []CompactionResult
 	for level := 0; level < CONFIG.LSMLevels-1; level++ {
 		sstFiles := make([]string, len(versions[level]))
@@ -45,7 +45,7 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 			lvlDir := fmt.Sprintf("lvl%d", level+1)
 			fw := file_writer.NewFileWriterInDir(CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db.tmp", dataRoot)
 			isLastLevel := level+1 >= CONFIG.LSMLevels
-			if err := sc.compactTables(toCompact, fw, bm, isLastLevel); err != nil {
+			if err := sc.compactTables(toCompact, fw, bm, isLastLevel, safeCompactionLSN); err != nil {
 				continue
 			}
 			if err := fw.Commit(); err != nil {
@@ -86,13 +86,17 @@ func (h *mergeHeap) Pop() any {
 
 type kv struct{ key, value string }
 
-func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWriter, bm *block_manager.BlockManager, isLastLevel bool) error {
+func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWriter, bm *block_manager.BlockManager, isLastLevel bool, safeCompactionLSN uint64) error {
 	streams := make([][]kv, len(tables))
 	totalItems := 0
+	var batchMaxLSN uint64
 	for i, path := range tables {
 		reader, err := sstable.Open(path, bm)
 		if err != nil {
 			return fmt.Errorf("compaction: open %s: %w", path, err)
+		}
+		if lsn := reader.MaxLSN(); lsn > batchMaxLSN {
+			batchMaxLSN = lsn
 		}
 		if err := reader.ScanAll(func(key, value string) {
 			streams[i] = append(streams[i], kv{key, value})
@@ -101,6 +105,8 @@ func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWrit
 		}
 		totalItems += len(streams[i])
 	}
+
+	dropTombstones := isLastLevel && (safeCompactionLSN == 0 || (batchMaxLSN > 0 && batchMaxLSN <= safeCompactionLSN))
 
 	bloom := bloom_filter.NewBloomFilterWithParams(totalItems, 0.01)
 	prefixFilter := bloom_filter.NewPrefixBloomFilter()
@@ -139,8 +145,7 @@ func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWrit
 		}
 		lastKey = entry.key
 
-		// Drop tombstones at the last level — no lower level can hold the key.
-		if isLastLevel && entry.value == CONFIG.Tombstone {
+		if dropTombstones && entry.value == CONFIG.Tombstone {
 			continue
 		}
 
@@ -185,7 +190,7 @@ func (sc *SSCompacterST) compactTables(tables []string, fw *file_writer.FileWrit
 		return fmt.Errorf("compaction: write filter: %w", err)
 	}
 
-	footer := ss_parser.SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(totalItems))
+	footer := ss_parser.SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(totalItems), batchMaxLSN)
 	if _, err := fw.WriteRaw(footer); err != nil {
 		os.Remove(fw.GetLocation()) //nolint:errcheck
 		return fmt.Errorf("compaction: write footer: %w", err)

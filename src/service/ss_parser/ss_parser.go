@@ -8,7 +8,7 @@ import (
 )
 
 type SSParser interface {
-	FlushMemtable(data []key_value.KeyValue) string
+	FlushMemtable(data []key_value.KeyValue, maxLSN uint64) string
 }
 
 type SSParserImpl struct {
@@ -19,7 +19,7 @@ func NewSSParser(fileWriter file_writer.FileWriterInterface) *SSParserImpl {
 	return &SSParserImpl{fileWriter: fileWriter}
 }
 
-func (ssParser *SSParserImpl) FlushMemtable(data []key_value.KeyValue) string {
+func (ssParser *SSParserImpl) FlushMemtable(data []key_value.KeyValue, maxLSN uint64) string {
 	filter := bloom_filter.NewBloomFilterWithParams(len(data), 0.01)
 	filter.AddMultiple(key_value.GetKeys(data))
 
@@ -42,7 +42,7 @@ func (ssParser *SSParserImpl) FlushMemtable(data []key_value.KeyValue) string {
 	filterBytes := SerializeFilterSection(bt_bf, bt_pbf, merkleTree.GetRootBytes())
 	filterOffset, _ := ssParser.fileWriter.WriteRaw(filterBytes) //nolint:errcheck
 
-	footer := SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(len(data)))
+	footer := SerializeFooter(indexOffset, int64(len(indexBytes)), filterOffset, int64(len(filterBytes)), int64(len(data)), maxLSN)
 	ssParser.fileWriter.WriteRaw(footer) //nolint:errcheck
 
 	ssParser.fileWriter.Commit() //nolint:errcheck

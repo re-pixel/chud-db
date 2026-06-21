@@ -12,7 +12,7 @@ func (e *Engine) runFlusher() {
 		if im == nil {
 			return
 		}
-		path := e.ss_parser.FlushMemtable(im.ToRaw())
+		path := e.ss_parser.FlushMemtable(im.ToRaw(), im.MaxLSN())
 		e.registerSSTable(0, path)
 		e.wal.PurgeUpTo(im.MaxLSN())
 		e.immQueue.PopFront()

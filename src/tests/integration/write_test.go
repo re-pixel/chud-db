@@ -40,7 +40,7 @@ func TestWritePathIntegration(t *testing.T) {
 	writtenLocation := fileWriter.GetLocation()
 	raw := mt.ToRaw()
 	kv.SortByKeys(&raw)
-	ssParser.FlushMemtable(raw)
+	ssParser.FlushMemtable(raw, 0)
 
 	data, err := bm.ReadAt(writtenLocation, 0, CONFIG.BlockSize)
 	if err != nil {
@@ -79,7 +79,7 @@ func TestWriteRead(t *testing.T) {
 	writtenPath := fileWriter.GetLocation()
 	raw := mt.ToRaw()
 	kv.SortByKeys(&raw)
-	ssParser.FlushMemtable(raw)
+	ssParser.FlushMemtable(raw, 0)
 	fmt.Print("File written successfully, now reading the data back...\n")
 
 	reader, err := sstable.Open(writtenPath, bm)
@@ -117,7 +117,7 @@ func TestPrefixScan(t *testing.T) {
 	writtenPath := fileWriter.GetLocation()
 	raw := mt.ToRaw()
 	kv.SortByKeys(&raw)
-	ssParser.FlushMemtable(raw)
+	ssParser.FlushMemtable(raw, 0)
 	fmt.Print("File written successfully, now reading the data back...\n")
 
 	reader, err := sstable.Open(writtenPath, bm)
@@ -151,7 +151,7 @@ func TestCompacter(t *testing.T) {
 		}
 		raw := mt.ToRaw()
 		kv.SortByKeys(&raw)
-		ssParser.FlushMemtable(raw)
+		ssParser.FlushMemtable(raw, 0)
 	}
 
 	versions := make([][]string, config.GetConfig().LSMLevels)
@@ -159,7 +159,7 @@ func TestCompacter(t *testing.T) {
 		versions[level] = utils.ListSSTablesInLevel(dataRoot, level)
 	}
 
-	results := sc.CheckCompactionConditions(bm, dataRoot, versions)
+	results := sc.CheckCompactionConditions(bm, dataRoot, versions, 0)
 	if len(results) == 0 {
 		t.Fatalf("Compaction conditions not met")
 	}
@@ -185,7 +185,7 @@ func TestGas(t *testing.T) {
 	writtenPath := fileWriter.GetLocation()
 	raw := mt.ToRaw()
 	kv.SortByKeys(&raw)
-	ssParser.FlushMemtable(raw)
+	ssParser.FlushMemtable(raw, 0)
 
 	reader, err := sstable.Open(writtenPath, bm)
 	if err != nil {
