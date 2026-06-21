@@ -6,6 +6,7 @@ type writeReq struct {
 	user  string
 	key   string
 	value string
+	sync  bool      // true = wait for fsync before signalling done (default)
 	done  chan error // buffered cap 1 — writer never blocks on send
 }
 
@@ -44,26 +45,43 @@ func (e *Engine) runWriter() {
 		// Apply every request to the WAL buffer and memtable (no fsync yet).
 		lsns := make([]uint64, len(batch))
 		errs := make([]error, len(batch))
-		var maxLSN uint64
+		var maxSyncLSN uint64
+		needsSync := false
 		for i, r := range batch {
 			lsns[i], errs[i] = e.applyWriteToMem(r.user, r.key, r.value)
-			if errs[i] == nil && lsns[i] > maxLSN {
-				maxLSN = lsns[i]
+			if errs[i] == nil && r.sync && lsns[i] > maxSyncLSN {
+				maxSyncLSN = lsns[i]
+				needsSync = true
 			}
 		}
 
-		// One fsync for the entire batch.
-		var syncErr error
-		if maxLSN > 0 {
-			syncErr = e.wal.WaitDurable(maxLSN)
+		// Signal async writes immediately — they are in the WAL buffer and
+		// memtable; durability is best-effort (next sync write covers them).
+		for i, r := range batch {
+			if !r.sync {
+				if errs[i] != nil {
+					r.done <- errs[i]
+				} else {
+					r.done <- nil
+				}
+			}
 		}
 
-		// Signal every caller.
+		// One fsync covering the highest LSN of all sync writes in the batch.
+		// This also incidentally durably covers any async writes with lower LSNs.
+		var syncErr error
+		if needsSync {
+			syncErr = e.wal.WaitDurable(maxSyncLSN)
+		}
+
+		// Signal sync writes after fsync.
 		for i, r := range batch {
-			if errs[i] != nil {
-				r.done <- errs[i]
-			} else {
-				r.done <- syncErr
+			if r.sync {
+				if errs[i] != nil {
+					r.done <- errs[i]
+				} else {
+					r.done <- syncErr
+				}
 			}
 		}
 	}

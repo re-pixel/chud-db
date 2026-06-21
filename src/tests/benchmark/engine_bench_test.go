@@ -131,6 +131,41 @@ func BenchmarkPutThroughputParallel(b *testing.B) {
 	reportOpsPerSec(b, "puts/sec")
 }
 
+// BenchmarkPutAsyncThroughput measures raw write throughput with sync=false.
+func BenchmarkPutAsyncThroughput(b *testing.B) {
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		if err := eng.WriteAsync(benchUser, benchKey("async", i), benchValue); err != nil {
+			b.Fatalf("WriteAsync: %v", err)
+		}
+	}
+	b.StopTimer()
+	eng.WaitForPendingFlushes()
+	reportOpsPerSec(b, "puts/sec")
+}
+
+// BenchmarkPutAsyncParallel measures concurrent async write throughput.
+func BenchmarkPutAsyncParallel(b *testing.B) {
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("async-par-%d-%d", i, b.N)
+			if err := eng.WriteAsync(benchUser, key, benchValue); err != nil {
+				b.Errorf("WriteAsync: %v", err)
+			}
+			i++
+		}
+	})
+	b.StopTimer()
+	eng.WaitForPendingFlushes()
+	reportOpsPerSec(b, "puts/sec")
+}
+
 // BenchmarkPutBurst fires N goroutines concurrently in a single burst to
 // maximise WAL group-commit batching. Reports total throughput over the burst.
 func BenchmarkPutBurst(b *testing.B) {

@@ -5,9 +5,23 @@ import (
 	"nosqlEngine/src/memtable"
 )
 
-// Write is the public API. It enqueues the operation and blocks until the
-// writer goroutine has applied it and durability is confirmed.
+// Write enqueues the operation and blocks until it is applied.
+// When fromWal is true the write bypasses the queue (WAL replay only).
+// sync=true (default) waits for fsync before returning; sync=false returns
+// once the write is in the WAL buffer and memtable.
 func (engine *Engine) Write(user, key, value string, fromWal bool) error {
+	return engine.write(user, key, value, fromWal, true)
+}
+
+// WriteAsync enqueues the operation and returns once the write is in the WAL
+// buffer and memtable, without waiting for fsync. On a crash, writes
+// acknowledged by WriteAsync may be lost if they were not subsequently covered
+// by a sync write or a graceful shutdown.
+func (engine *Engine) WriteAsync(user, key, value string) error {
+	return engine.write(user, key, value, false, false)
+}
+
+func (engine *Engine) write(user, key, value string, fromWal, sync bool) error {
 	if fromWal {
 		return engine.applyWrite(user, key, value, true)
 	}
@@ -15,6 +29,7 @@ func (engine *Engine) Write(user, key, value string, fromWal bool) error {
 		user:  user,
 		key:   key,
 		value: value,
+		sync:  sync,
 		done:  make(chan error, 1),
 	}
 	engine.writeCh <- req
