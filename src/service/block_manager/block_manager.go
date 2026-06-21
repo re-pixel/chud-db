@@ -25,6 +25,13 @@ func NewBlockManager() *BlockManager {
 
 
 func (bm *BlockManager) ReadAt(path string, offset int64, size int) ([]byte, error) {
+	isBlockRead := size == bm.block_size && offset%int64(bm.block_size) == 0
+	blockID := int(offset / int64(bm.block_size))
+	if isBlockRead {
+		if data, ok := bm.lruCache.Get(path, blockID); ok {
+			return data, nil
+		}
+	}
 	f, err := bm.getOrOpenFD(path)
 	if err != nil {
 		return nil, err
@@ -34,7 +41,11 @@ func (bm *BlockManager) ReadAt(path string, offset int64, size int) ([]byte, err
 	if err != nil {
 		return nil, err
 	}
-	return buf[:n], nil
+	data := buf[:n]
+	if isBlockRead {
+		bm.lruCache.Put(path, blockID, data)
+	}
+	return data, nil
 }
 
 func (bm *BlockManager) getOrOpenFD(path string) (*os.File, error) {
