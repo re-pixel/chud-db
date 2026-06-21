@@ -10,11 +10,17 @@ func (engine *Engine) Read(user string, key string) (string, bool, error) {
 	}
 
 	if value, ok := engine.loadActiveMem().Get(key); ok {
+		if value == CONFIG.Tombstone {
+			return "", false, nil
+		}
 		return value, true, nil
 	}
 
 	for _, im := range engine.immQueue.Snapshot() {
 		if value, ok := im.Get(key); ok {
+			if value == CONFIG.Tombstone {
+				return "", false, nil
+			}
 			return value, true, nil
 		}
 	}
@@ -25,13 +31,20 @@ func (engine *Engine) Read(user string, key string) (string, bool, error) {
 func (engine *Engine) readFromSSTables(key string) (string, bool, error) {
 	versions, unlock := engine.lockVersions()
 	defer unlock()
-	for _, paths := range versions {
-		for _, path := range paths {
+	for i, paths := range versions {
+		ordered := paths
+		if i == 0 {
+			ordered = reversedPaths(paths)
+		}
+		for _, path := range ordered {
 			reader, err := engine.tableCache.GetOrOpen(path)
 			if err != nil {
 				continue
 			}
 			if v, ok, err := reader.Get(key); err == nil && ok {
+				if v == CONFIG.Tombstone {
+					return "", false, nil
+				}
 				return v, true, nil
 			}
 		}
