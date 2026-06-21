@@ -33,8 +33,9 @@ func (sc *SSCompacterST) CheckCompactionConditions(bm *block_manager.BlockManage
 			toCompact := sstFiles[:CONFIG.CompactionThreshold]
 			sstFiles = sstFiles[CONFIG.CompactionThreshold:]
 			lvlDir := fmt.Sprintf("lvl%d", level+1)
-			fw := file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db", dataRoot)
+			fw := file_writer.NewFileWriterInDir(CONFIG.BlockSize, "sstable/"+lvlDir+"/sstable_"+uuid.New().String()+".db.tmp", dataRoot)
 			sc.compactTables(toCompact, fw, bm)
+			fw.Commit() //nolint:errcheck
 			for _, file := range toCompact {
 				if tc != nil {
 					tc.Evict(file)

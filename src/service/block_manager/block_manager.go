@@ -1,7 +1,6 @@
 package block_manager
 
 import (
-	"fmt"
 	"nosqlEngine/src/config"
 	"os"
 	"sync"
@@ -22,33 +21,6 @@ func NewBlockManager() *BlockManager {
 		lruCache:   NewLRUCache(),
 		openFDs:    make(map[string]*os.File),
 	}
-}
-
-func (bm *BlockManager) WriteBlock(location string, blockNumber int, data []byte) error {
-	if len(data) > CONFIG.BlockSize {
-		return fmt.Errorf("data size exceeds block size")
-	}
-
-	file, err := os.OpenFile(location, os.O_WRONLY|os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	offset := int64(CONFIG.BlockSize * blockNumber)
-	_, err = file.Seek(offset, 0)
-	if err != nil {
-		return err
-	}
-
-	_, err = file.Write(data)
-	if err != nil {
-		return err
-	}
-
-	//bm.lruCache.Put(location, blockNumber, data)
-
-	return nil
 }
 
 

@@ -4,13 +4,14 @@ import (
 	"encoding/binary"
 	"fmt"
 	"nosqlEngine/src/config"
+	m "nosqlEngine/src/memtable"
 	b "nosqlEngine/src/service/block_manager"
 	fw "nosqlEngine/src/service/file_writer"
 	"nosqlEngine/src/service/ss_compacter"
 	"nosqlEngine/src/service/ss_parser"
-	m "nosqlEngine/src/memtable"
 	"nosqlEngine/src/sstable"
 	"nosqlEngine/src/utils"
+	kv "nosqlEngine/src/models/key_value"
 	"testing"
 
 	"github.com/google/uuid"
@@ -25,7 +26,7 @@ func bytesToInt(buf []byte) int64 {
 func TestWritePathIntegration(t *testing.T) {
 	bm := b.NewBlockManager()
 	blockSize := CONFIG.BlockSize
-	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/sstable_"+uuid.New().String()+".db")
+	fileWriter := fw.NewFileWriter(blockSize, "sstable/sstable_"+uuid.New().String()+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 	mt := m.NewMemtable()
 
@@ -37,7 +38,9 @@ func TestWritePathIntegration(t *testing.T) {
 
 	// Capture location before FlushMemtable resets the writer.
 	writtenLocation := fileWriter.GetLocation()
-	ssParser.FlushMemtable(mt.ToRaw())
+	raw := mt.ToRaw()
+	kv.SortByKeys(&raw)
+	ssParser.FlushMemtable(raw)
 
 	data, err := bm.ReadAt(writtenLocation, 0, CONFIG.BlockSize)
 	if err != nil {
@@ -64,7 +67,7 @@ func TestWriteRead(t *testing.T) {
 	blockSize := CONFIG.BlockSize
 	uuidStr := uuid.New().String()
 
-	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/lvl0/sstable_"+uuidStr+".db")
+	fileWriter := fw.NewFileWriter(blockSize, "sstable/lvl0/sstable_"+uuidStr+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 
 	for i := 0; i < 10; i++ {
@@ -74,7 +77,9 @@ func TestWriteRead(t *testing.T) {
 	}
 
 	writtenPath := fileWriter.GetLocation()
-	ssParser.FlushMemtable(mt.ToRaw())
+	raw := mt.ToRaw()
+	kv.SortByKeys(&raw)
+	ssParser.FlushMemtable(raw)
 	fmt.Print("File written successfully, now reading the data back...\n")
 
 	reader, err := sstable.Open(writtenPath, bm)
@@ -100,7 +105,7 @@ func TestPrefixScan(t *testing.T) {
 	blockSize := CONFIG.BlockSize
 	uuidStr := uuid.New().String()
 
-	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/lvl0/sstable_prefix_"+uuidStr+".db")
+	fileWriter := fw.NewFileWriter(blockSize, "sstable/lvl0/sstable_prefix_"+uuidStr+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 
 	for i := 0; i < 20; i++ {
@@ -110,7 +115,9 @@ func TestPrefixScan(t *testing.T) {
 	}
 
 	writtenPath := fileWriter.GetLocation()
-	ssParser.FlushMemtable(mt.ToRaw())
+	raw := mt.ToRaw()
+	kv.SortByKeys(&raw)
+	ssParser.FlushMemtable(raw)
 	fmt.Print("File written successfully, now reading the data back...\n")
 
 	reader, err := sstable.Open(writtenPath, bm)
@@ -145,7 +152,7 @@ func TestGas(t *testing.T) {
 	blockSize := CONFIG.BlockSize
 	uuidStr := uuid.New().String()
 
-	fileWriter := fw.NewFileWriter(bm, blockSize, "sstable/lvl0/sstable_gas_"+uuidStr+".db")
+	fileWriter := fw.NewFileWriter(blockSize, "sstable/lvl0/sstable_gas_"+uuidStr+".db")
 	ssParser := ss_parser.NewSSParser(fileWriter)
 
 	for i := 0; i < 5; i++ {
@@ -155,7 +162,9 @@ func TestGas(t *testing.T) {
 	}
 
 	writtenPath := fileWriter.GetLocation()
-	ssParser.FlushMemtable(mt.ToRaw())
+	raw := mt.ToRaw()
+	kv.SortByKeys(&raw)
+	ssParser.FlushMemtable(raw)
 
 	reader, err := sstable.Open(writtenPath, bm)
 	if err != nil {

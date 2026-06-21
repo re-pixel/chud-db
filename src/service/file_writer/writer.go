@@ -1,8 +1,8 @@
 package file_writer
 
 import (
+	"bufio"
 	"fmt"
-	"nosqlEngine/src/service/block_manager"
 	"nosqlEngine/src/utils"
 	"os"
 	"path/filepath"
@@ -12,7 +12,6 @@ import (
 )
 
 type FileWriter struct {
-	block_manager   *block_manager.BlockManager
 	location        string
 	dataRoot        string
 	currentBlock    []byte
@@ -20,13 +19,15 @@ type FileWriter struct {
 	blockSize       int
 	offsetInBlock   int
 	rawBytesWritten int64
+	file            *os.File
+	buf             *bufio.Writer
 }
 
-func NewFileWriter(bm *block_manager.BlockManager, blockSize int, name string) *FileWriter {
-	return NewFileWriterInDir(bm, blockSize, name, utils.DefaultDataRoot())
+func NewFileWriter(blockSize int, name string) *FileWriter {
+	return NewFileWriterInDir(blockSize, name, utils.DefaultDataRoot())
 }
 
-func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name string, dataRoot string) *FileWriter {
+func NewFileWriterInDir(blockSize int, name string, dataRoot string) *FileWriter {
 	if name == "" {
 		name = generateFileName(0)
 	}
@@ -35,13 +36,10 @@ func NewFileWriterInDir(bm *block_manager.BlockManager, blockSize int, name stri
 		fmt.Println("Error creating sstable dir:", err)
 	}
 	return &FileWriter{
-		block_manager:   bm,
-		location:        location,
-		dataRoot:        dataRoot,
-		currentBlock:    make([]byte, 0, blockSize),
-		currentBlockNum: 0,
-		blockSize:       blockSize,
-		offsetInBlock:   0,
+		location:     location,
+		dataRoot:     dataRoot,
+		currentBlock: make([]byte, 0, blockSize),
+		blockSize:    blockSize,
 	}
 }
 
@@ -49,7 +47,30 @@ func generateFileName(level int) string {
 	return fmt.Sprintf("sstable/lvl%d/sstable_%s.db.tmp", level, uuid.New().String())
 }
 
+func (fw *FileWriter) openIfNeeded() error {
+	if fw.file != nil {
+		return nil
+	}
+	f, err := os.OpenFile(fw.location, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	fw.file = f
+	fw.buf = bufio.NewWriterSize(f, 64*1024)
+	return nil
+}
+
 func (fw *FileWriter) Commit() error {
+	if fw.file != nil {
+		if err := fw.buf.Flush(); err != nil {
+			return err
+		}
+		if err := fw.file.Close(); err != nil {
+			return err
+		}
+		fw.file = nil
+		fw.buf = nil
+	}
 	if !strings.HasSuffix(fw.location, ".tmp") {
 		return nil
 	}
@@ -114,7 +135,11 @@ func (fw *FileWriter) FlushCurrentBlock() {
 		byte(usedBytes),
 		NonJumbo,
 	)
-	fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, fw.currentBlock) //nolint:errcheck
+	if err := fw.openIfNeeded(); err != nil {
+		fmt.Println("Error opening file:", err)
+		return
+	}
+	fw.buf.Write(fw.currentBlock) //nolint:errcheck
 	fw.currentBlockNum++
 	fw.currentBlock = make([]byte, 0, fw.blockSize)
 	fw.offsetInBlock = 0
@@ -128,6 +153,11 @@ func (fw *FileWriter) WriteJumboData(data []byte) int {
 	startBlock := fw.currentBlockNum
 	availablePerBlock := fw.blockSize - 3
 	numBlocks := (len(data) + availablePerBlock - 1) / availablePerBlock
+
+	if err := fw.openIfNeeded(); err != nil {
+		fmt.Println("Error opening file:", err)
+		return startBlock
+	}
 
 	dataOffset := 0
 	for i := 0; i < numBlocks; i++ {
@@ -154,7 +184,7 @@ func (fw *FileWriter) WriteJumboData(data []byte) int {
 		blockData[fw.blockSize-2] = byte(chunkSize)
 		blockData[fw.blockSize-1] = blockType
 
-		fw.block_manager.WriteBlock(fw.location, fw.currentBlockNum, blockData) //nolint:errcheck
+		fw.buf.Write(blockData) //nolint:errcheck
 		fw.currentBlockNum++
 	}
 
@@ -165,16 +195,14 @@ func (fw *FileWriter) WriteJumboData(data []byte) int {
 
 func (fw *FileWriter) WriteRaw(data []byte) (int64, error) {
 	fw.FlushCurrentBlock()
+	if err := fw.openIfNeeded(); err != nil {
+		return 0, err
+	}
+	if err := fw.buf.Flush(); err != nil {
+		return 0, err
+	}
 	startOffset := int64(fw.currentBlockNum)*int64(fw.blockSize) + fw.rawBytesWritten
-	f, err := os.OpenFile(fw.location, os.O_WRONLY, 0644)
-	if err != nil {
-		return 0, err
-	}
-	defer f.Close()
-	if _, err = f.Seek(startOffset, 0); err != nil {
-		return 0, err
-	}
-	if _, err = f.Write(data); err != nil {
+	if _, err := fw.file.Write(data); err != nil {
 		return 0, err
 	}
 	fw.rawBytesWritten += int64(len(data))
@@ -198,13 +226,19 @@ func (fw *FileWriter) SetLocation(location string) {
 }
 
 func (fw *FileWriter) ResetFileWriter(name string) {
-	if name == "" {
-		name = generateFileName(0)
+	if fw.file != nil {
+		fw.buf.Flush()    //nolint:errcheck
+		fw.file.Close()   //nolint:errcheck
+		fw.file = nil
+		fw.buf = nil
 	}
 	fw.currentBlock = make([]byte, 0, fw.blockSize)
 	fw.currentBlockNum = 0
 	fw.offsetInBlock = 0
 	fw.rawBytesWritten = 0
+	if name == "" {
+		name = generateFileName(0)
+	}
 	fw.location = filepath.Join(fw.dataRoot, name)
 	if err := os.MkdirAll(filepath.Dir(fw.location), 0755); err != nil {
 		fmt.Println("Error creating sstable dir:", err)

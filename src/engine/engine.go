@@ -55,7 +55,7 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 		userLimiter:    user_limiter.NewUserLimiter(),
 		activeMem:      memtable.NewMemtable(),
 		immQueue:       newImmutableQueue(maxImm),
-		ss_parser:      ss_parser.NewSSParser(file_writer.NewFileWriterInDir(bm, CONFIG.BlockSize, "", dataRoot)),
+		ss_parser:      ss_parser.NewSSParser(file_writer.NewFileWriterInDir(CONFIG.BlockSize, "", dataRoot)),
 		ss_compacter:   ss_compacter.NewSSCompacterST(),
 		wal:            walInstance,
 		block_manager:  bm,
