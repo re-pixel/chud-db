@@ -65,31 +65,23 @@ func (engine *Engine) scan(
 	results := make(map[string]string)
 	seen := make(map[string]struct{})
 
-	for _, kv := range engine.loadActiveMem().ToRaw() {
-		key := kv.GetKey()
-		if !keyPred(key) {
-			continue
-		}
+	engine.loadActiveMem().Scan(keyPred, func(key, value string) {
 		seen[key] = struct{}{}
-		if kv.GetValue() != CONFIG.Tombstone {
-			results[key] = kv.GetValue()
+		if value != CONFIG.Tombstone {
+			results[key] = value
 		}
-	}
+	})
 
 	for _, im := range engine.immQueue.Snapshot() {
-		for _, kv := range im.ToRaw() {
-			key := kv.GetKey()
-			if !keyPred(key) {
-				continue
-			}
+		im.Scan(keyPred, func(key, value string) {
 			if _, ok := seen[key]; ok {
-				continue
+				return
 			}
 			seen[key] = struct{}{}
-			if kv.GetValue() != CONFIG.Tombstone {
-				results[key] = kv.GetValue()
+			if value != CONFIG.Tombstone {
+				results[key] = value
 			}
-		}
+		})
 	}
 
 	versions, unlock := engine.lockVersions()

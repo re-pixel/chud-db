@@ -165,6 +165,24 @@ func (n *bTreeNode) splitChild(i, order int) {
 	n.values[i] = promotedVal
 }
 
+func (t *BTree) Scan(pred func(key string) bool, fn func(key, value string)) {
+	t.root.scan(pred, fn)
+}
+
+func (n *bTreeNode) scan(pred func(key string) bool, fn func(key, value string)) {
+	for i := 0; i < len(n.keys); i++ {
+		if !n.isLeaf {
+			n.children[i].scan(pred, fn)
+		}
+		if pred(n.keys[i]) {
+			fn(n.keys[i], n.values[i])
+		}
+	}
+	if !n.isLeaf {
+		n.children[len(n.keys)].scan(pred, fn)
+	}
+}
+
 func (t *BTree) ToRaw() []key_value.KeyValue {
 	pairs := make([]key_value.KeyValue, 0)
 	t.root.collect(&pairs)

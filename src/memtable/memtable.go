@@ -5,6 +5,9 @@ import "nosqlEngine/src/models/key_value"
 type Memtable interface {
 	Add(key string, value string) bool
 	Get(key string) (string, bool)
+	// Scan calls fn for every entry — including tombstones — whose key
+	// satisfies pred. It avoids copying the full dataset.
+	Scan(pred func(key string) bool, fn func(key, value string))
 	ToRaw() []key_value.KeyValue
 	GetSize() int
 	Clear() bool

@@ -42,6 +42,14 @@ func (im *ImmutableMemtable) Get(key string) (string, bool) {
 	return "", false
 }
 
+func (im *ImmutableMemtable) Scan(pred func(key string) bool, fn func(key, value string)) {
+	for _, kv := range im.data {
+		if pred(kv.GetKey()) {
+			fn(kv.GetKey(), kv.GetValue())
+		}
+	}
+}
+
 func (im *ImmutableMemtable) ToRaw() []key_value.KeyValue {
 	out := make([]key_value.KeyValue, len(im.data))
 	copy(out, im.data)

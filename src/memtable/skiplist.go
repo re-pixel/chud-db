@@ -114,6 +114,14 @@ func (s *SkipList) randomLevel() int {
 	return level
 }
 
+func (s *SkipList) Scan(pred func(key string) bool, fn func(key, value string)) {
+	for node := s.bottomHead.right; node != nil; node = node.right {
+		if pred(node.key) {
+			fn(node.key, node.value)
+		}
+	}
+}
+
 func (s *SkipList) ToRaw() []key_value.KeyValue {
 	ret := make([]key_value.KeyValue, 0)
 	for node := s.bottomHead.right; node != nil; node = node.right {

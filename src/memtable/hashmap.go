@@ -42,6 +42,14 @@ func (h *HashMap) Get(key string) (string, bool) {
 	return value, true
 }
 
+func (h *HashMap) Scan(pred func(key string) bool, fn func(key, value string)) {
+	for k, v := range h.data {
+		if pred(k) {
+			fn(k, v)
+		}
+	}
+}
+
 func (h *HashMap) ToRaw() []key_value.KeyValue {
 	ret := make([]key_value.KeyValue, 0, len(h.data))
 	for k, v := range h.data {

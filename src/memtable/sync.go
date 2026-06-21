@@ -32,6 +32,12 @@ func (s *syncMemtable) Get(key string) (string, bool) {
 	return s.inner.Get(key)
 }
 
+func (s *syncMemtable) Scan(pred func(key string) bool, fn func(key, value string)) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	s.inner.Scan(pred, fn)
+}
+
 func (s *syncMemtable) ToRaw() []key_value.KeyValue {
 	s.mu.RLock()
 	raw := s.inner.ToRaw()
