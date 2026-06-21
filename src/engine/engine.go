@@ -41,6 +41,10 @@ type Engine struct {
 	dataRoot       string
 	skipRateLimit  bool
 	skipCompaction bool
+
+	pinnedMu       sync.Mutex
+	pinned         map[string]int // path → active snapshot refcount
+	deferredDeletes []string      // paths evicted by compaction while still pinned
 }
 
 func NewEngine() *Engine {
@@ -72,6 +76,7 @@ func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompact
 		dataRoot:       dataRoot,
 		skipRateLimit:  skipRateLimit,
 		skipCompaction: skipCompaction,
+		pinned:         make(map[string]int),
 	}
 	eng.initVersions()
 	return eng
@@ -118,8 +123,6 @@ func (engine *Engine) registerSSTable(level int, path string) {
 	engine.versionMu.Unlock()
 }
 
-// installCompaction atomically swaps old paths for the new compacted path,
-// evicts the old readers from the cache, then physically deletes the old files.
 func (engine *Engine) installCompaction(level int, newPath string, oldPaths []string) {
 	engine.versionMu.Lock()
 	outLevel := level + 1
@@ -138,10 +141,47 @@ func (engine *Engine) installCompaction(level int, newPath string, oldPaths []st
 	for _, p := range oldPaths {
 		engine.tableCache.Evict(p)
 	}
-	for _, p := range oldPaths {
-		os.Remove(p) //nolint:errcheck
-	}
 	engine.versionMu.Unlock()
+
+	engine.deleteFiles(oldPaths)
+}
+
+func (engine *Engine) deleteFiles(paths []string) {
+	engine.pinnedMu.Lock()
+	defer engine.pinnedMu.Unlock()
+	for _, p := range paths {
+		if engine.pinned[p] > 0 {
+			engine.deferredDeletes = append(engine.deferredDeletes, p)
+		} else {
+			os.Remove(p) //nolint:errcheck
+		}
+	}
+}
+
+func (engine *Engine) pinFile(path string) {
+	engine.pinnedMu.Lock()
+	engine.pinned[path]++
+	engine.pinnedMu.Unlock()
+}
+
+func (engine *Engine) unpinFiles(files []SnapshotFile) {
+	engine.pinnedMu.Lock()
+	defer engine.pinnedMu.Unlock()
+	for _, f := range files {
+		engine.pinned[f.Path]--
+		if engine.pinned[f.Path] == 0 {
+			delete(engine.pinned, f.Path)
+		}
+	}
+	remaining := engine.deferredDeletes[:0]
+	for _, p := range engine.deferredDeletes {
+		if engine.pinned[p] > 0 {
+			remaining = append(remaining, p)
+		} else {
+			os.Remove(p) //nolint:errcheck
+		}
+	}
+	engine.deferredDeletes = remaining
 }
 
 // lockVersions returns the live versions slice and an RUnlock func.
