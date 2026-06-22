@@ -294,6 +294,28 @@ func BenchmarkDeleteSequential(b *testing.B) {
 	reportOpsPerSec(b, "deletes/sec")
 }
 
+func benchmarkBatchPut(b *testing.B, batchSize int) {
+	b.Helper()
+	eng, _ := setupBenchEngine(b)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		batch := engine.NewWriteBatch()
+		for j := 0; j < batchSize; j++ {
+			batch.Put(fmt.Sprintf("batch-%d-%d", i, j), benchValue)
+		}
+		if err := eng.ApplyBatch(benchUser, batch); err != nil {
+			b.Fatalf("ApplyBatch: %v", err)
+		}
+	}
+	b.StopTimer()
+	eng.WaitForPendingFlushes()
+	b.ReportMetric(float64(b.N*batchSize)/b.Elapsed().Seconds(), "puts/sec")
+}
+
+func BenchmarkBatchPut10(b *testing.B)  { benchmarkBatchPut(b, 10) }
+func BenchmarkBatchPut100(b *testing.B) { benchmarkBatchPut(b, 100) }
+
 func BenchmarkMixedReadWrite(b *testing.B) {
 	eng, _ := setupBenchEngine(b)
 

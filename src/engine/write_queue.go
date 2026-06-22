@@ -2,10 +2,12 @@ package engine
 
 // writeReq is a single write operation submitted to the writer goroutine.
 // The caller blocks on done until the writer finishes and sends the result.
+// When ops is non-nil the request is a batch; key/value are unused.
 type writeReq struct {
 	user  string
 	key   string
 	value string
+	ops   []BatchOp // non-nil = batch write
 	sync  bool      // true = wait for fsync before signalling done (default)
 	done  chan error // buffered cap 1 — writer never blocks on send
 }
@@ -43,12 +45,27 @@ func (e *Engine) runWriter() {
 		}
 
 		// Apply every request to the WAL buffer and memtable (no fsync yet).
+		// Batch requests iterate over their ops; single requests use key/value.
 		lsns := make([]uint64, len(batch))
 		errs := make([]error, len(batch))
 		var maxSyncLSN uint64
 		needsSync := false
 		for i, r := range batch {
-			lsns[i], errs[i] = e.applyWriteToMem(r.user, r.key, r.value)
+			if r.ops != nil {
+				var lastLSN uint64
+				var lastErr error
+				for _, op := range r.ops {
+					lsn, err := e.applyWriteToMem(r.user, op.Key, op.Value)
+					if err != nil {
+						lastErr = err
+						break
+					}
+					lastLSN = lsn
+				}
+				lsns[i], errs[i] = lastLSN, lastErr
+			} else {
+				lsns[i], errs[i] = e.applyWriteToMem(r.user, r.key, r.value)
+			}
 			if errs[i] == nil && r.sync && lsns[i] > maxSyncLSN {
 				maxSyncLSN = lsns[i]
 				needsSync = true

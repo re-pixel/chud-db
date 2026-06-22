@@ -86,6 +86,35 @@ func (engine *Engine) applyWrite(user, key, value string, fromWal bool) error {
 	return nil
 }
 
+func (engine *Engine) ApplyBatch(user string, b *WriteBatch) error {
+	return engine.applyBatch(user, b, true)
+}
+
+func (engine *Engine) ApplyBatchAsync(user string, b *WriteBatch) error {
+	return engine.applyBatch(user, b, false)
+}
+
+func (engine *Engine) applyBatch(user string, b *WriteBatch, sync bool) error {
+	if b == nil || len(b.ops) == 0 {
+		return nil
+	}
+	ops := make([]BatchOp, len(b.ops))
+	for i, op := range b.ops {
+		ops[i] = op
+		if op.Delete {
+			ops[i].Value = CONFIG.Tombstone
+		}
+	}
+	req := writeReq{
+		user: user,
+		ops:  ops,
+		sync: sync,
+		done: make(chan error, 1),
+	}
+	engine.writeCh <- req
+	return <-req.done
+}
+
 func (engine *Engine) replayFlush(mem memtable.Memtable) {
 	snapshot := mem.TakeSnapshot() // atomic copy+clear; safe because single-threaded
 	engine.activeMemMu.Lock()
