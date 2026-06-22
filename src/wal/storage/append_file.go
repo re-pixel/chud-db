@@ -21,6 +21,7 @@ type AppendFileStorage struct {
 	activeSegmentPath string
 	file            *os.File
 	writeBuffer     []byte
+	writtenBytes    int64
 	nextLSN         uint64
 	appendedLSN     uint64
 	durableLSN      uint64
@@ -231,11 +232,10 @@ func (s *AppendFileStorage) flushLocked() error {
 	if len(s.writeBuffer) == 0 {
 		return nil
 	}
-	if _, err := s.file.Write(s.writeBuffer); err != nil {
-		return err
-	}
+	n, err := s.file.Write(s.writeBuffer)
+	s.writtenBytes += int64(n)
 	s.writeBuffer = s.writeBuffer[:0]
-	return nil
+	return err
 }
 
 func (s *AppendFileStorage) syncLocked() error {
@@ -271,11 +271,7 @@ func (s *AppendFileStorage) rotateIfNeededLocked() error {
 	if err := s.flushLocked(); err != nil {
 		return err
 	}
-	info, err := s.file.Stat()
-	if err != nil {
-		return err
-	}
-	if info.Size() < s.segmentSize {
+	if s.writtenBytes < s.segmentSize {
 		return nil
 	}
 
@@ -297,10 +293,6 @@ func (s *AppendFileStorage) rotateIfNeededLocked() error {
 
 func (s *AppendFileStorage) openNewSegment(id uint64) error {
 	path := s.segmentPath(id)
-	return s.openSegment(id, path)
-}
-
-func (s *AppendFileStorage) openSegment(id uint64, path string) error {
 	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
 		return err
@@ -309,6 +301,27 @@ func (s *AppendFileStorage) openSegment(id uint64, path string) error {
 	s.activeSegmentPath = path
 	s.file = file
 	s.writeBuffer = s.writeBuffer[:0]
+	s.writtenBytes = 0
+	preAllocate(file, s.segmentSize)
+	return nil
+}
+
+// openSegment reopens an existing partial segment (called only from init).
+// It seeds writtenBytes from the file's actual size so rotation triggers correctly.
+func (s *AppendFileStorage) openSegment(id uint64, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0644)
+	if err != nil {
+		return err
+	}
+	s.segmentID = id
+	s.activeSegmentPath = path
+	s.file = file
+	s.writeBuffer = s.writeBuffer[:0]
+	s.writtenBytes = info.Size()
 	return nil
 }
 
