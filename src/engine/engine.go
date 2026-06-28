@@ -59,6 +59,27 @@ func NewEngine() *Engine {
 	return newEngine(utils.DefaultDataRoot(), walInstance, false, false)
 }
 
+func NewEngineInDir(dataRoot string) (*Engine, error) {
+	if err := prepareEngineDirs(dataRoot); err != nil {
+		return nil, err
+	}
+	walInstance, err := wal.NewWALInDir(filepath.Join(dataRoot, "wal"))
+	if err != nil {
+		return nil, fmt.Errorf("create wal: %w", err)
+	}
+	return newEngine(dataRoot, walInstance, false, false), nil
+}
+
+func prepareEngineDirs(dataRoot string) error {
+	for level := 0; level < CONFIG.LSMLevels; level++ {
+		levelDir := utils.SSTableLevelDir(dataRoot, level)
+		if err := os.MkdirAll(levelDir, 0755); err != nil {
+			return fmt.Errorf("create sstable lvl%d dir: %w", level, err)
+		}
+	}
+	return nil
+}
+
 func newEngine(dataRoot string, walInstance *wal.WAL, skipRateLimit, skipCompaction bool) *Engine {
 	bm := block_manager.NewBlockManager()
 	maxImm := CONFIG.MaxImmutableCount

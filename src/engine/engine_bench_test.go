@@ -78,6 +78,37 @@ func TestBenchEngineUsesIsolatedDirs(t *testing.T) {
 	}
 }
 
+func TestNewEngineInDirUsesIsolatedDirs(t *testing.T) {
+	dataRoot := t.TempDir()
+
+	eng, err := NewEngineInDir(dataRoot)
+	if err != nil {
+		t.Fatalf("NewEngineInDir failed: %v", err)
+	}
+	eng.Start()
+	defer eng.Shut()
+
+	if err := eng.Write("node", "key1", "value1", false); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	walDir := filepath.Join(dataRoot, "wal")
+	walEntries, err := os.ReadDir(walDir)
+	if err != nil {
+		t.Fatalf("read wal dir: %v", err)
+	}
+	if len(walEntries) == 0 {
+		t.Fatal("expected WAL segment files under data root")
+	}
+
+	for level := 0; level < CONFIG.LSMLevels; level++ {
+		levelDir := filepath.Join(dataRoot, "sstable", fmt.Sprintf("lvl%d", level))
+		if _, err := os.Stat(levelDir); err != nil {
+			t.Fatalf("expected sstable level dir %s: %v", levelDir, err)
+		}
+	}
+}
+
 func TestGracefulShutdownFlushesActiveMem(t *testing.T) {
 	benchDir := t.TempDir()
 	eng, err := NewBenchEngine(benchDir)

@@ -36,6 +36,15 @@ func NewWAL() (*WAL, error) {
 	return NewWALWithStorage(store, cfg.WALSyncMode), nil
 }
 
+func NewWALInDir(walDir string) (*WAL, error) {
+	cfg := config.Get()
+	store, err := storage.NewAppendStorageInDir(walDir, cfg.WALSegmentSize, cfg.WALWriteBufferSize)
+	if err != nil {
+		return nil, err
+	}
+	return NewWALWithStorage(store, cfg.WALSyncMode), nil
+}
+
 func NewWALWithStorage(store storage.AppendStorage, syncMode string) *WAL {
 	w := &WAL{
 		store:      store,

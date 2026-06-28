@@ -4,6 +4,7 @@ import (
 	"io"
 	"nosqlEngine/src/wal/record"
 	"nosqlEngine/src/wal/storage"
+	"os"
 	"testing"
 )
 
@@ -60,6 +61,29 @@ func TestWritePutFlush(t *testing.T) {
 	}
 	if string(records[0].Value) != "value1" {
 		t.Fatalf("value mismatch: got %q", records[0].Value)
+	}
+}
+
+func TestNewWALInDirUsesProvidedDirectory(t *testing.T) {
+	walDir := t.TempDir()
+
+	w, err := NewWALInDir(walDir)
+	if err != nil {
+		t.Fatalf("NewWALInDir: %v", err)
+	}
+	if err := w.WritePut("key", "value"); err != nil {
+		t.Fatalf("WritePut: %v", err)
+	}
+	if err := w.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	entries, err := os.ReadDir(walDir)
+	if err != nil {
+		t.Fatalf("ReadDir(%q): %v", walDir, err)
+	}
+	if len(entries) == 0 {
+		t.Fatal("expected WAL segment files in provided directory")
 	}
 }
 
