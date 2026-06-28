@@ -1,0 +1,203 @@
+syntax = "proto3";
+
+package nosql.cluster.v1;
+
+option go_package = "nosqlEngine/src/cluster/transport/pb;pb";
+
+message VectorClockEntry {
+  string node_id = 1;
+  uint64 counter = 2;
+}
+
+message VectorClock {
+  repeated VectorClockEntry entries = 1;
+}
+
+message Envelope {
+  int32 version = 1;
+  VectorClock vector_clock = 2;
+  int64 updated_at_unix_nano = 3;
+  bool deleted = 4;
+  string value = 5;
+}
+
+message KeyEnvelope {
+  string key = 1;
+  Envelope envelope = 2;
+}
+
+message Status {
+  bool ok = 1;
+  string error = 2;
+}
+
+message NodeInfo {
+  string node_id = 1;
+  string cluster_id = 2;
+  string advertise_addr = 3;
+}
+
+message PutRequest {
+  string key = 1;
+  Envelope envelope = 2;
+  bool sync = 3;
+}
+
+message DeleteRequest {
+  string key = 1;
+  Envelope envelope = 2;
+  bool sync = 3;
+}
+
+message WriteResponse {
+  Status status = 1;
+}
+
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  Status status = 1;
+  bool found = 2;
+  Envelope envelope = 3;
+}
+
+message RangeScanRequest {
+  string start = 1;
+  string end = 2;
+  int32 page_num = 3;
+  int32 page_size = 4;
+}
+
+message RangeScanResponse {
+  Status status = 1;
+  repeated KeyEnvelope rows = 2;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  Status status = 1;
+  NodeInfo node = 2;
+  bool ready = 3;
+}
+
+message ReplicatePutRequest {
+  string key = 1;
+  Envelope envelope = 2;
+}
+
+message ReplicateDeleteRequest {
+  string key = 1;
+  Envelope envelope = 2;
+}
+
+message FetchVersionRequest {
+  string key = 1;
+}
+
+message FetchVersionResponse {
+  Status status = 1;
+  bool found = 2;
+  Envelope envelope = 3;
+}
+
+message GossipRequest {
+  NodeInfo sender = 1;
+  repeated NodeInfo known_nodes = 2;
+  uint64 membership_epoch = 3;
+}
+
+message GossipResponse {
+  Status status = 1;
+  repeated NodeInfo known_nodes = 2;
+  uint64 membership_epoch = 3;
+}
+
+message PingRequest {
+  NodeInfo sender = 1;
+}
+
+message PingResponse {
+  Status status = 1;
+  NodeInfo responder = 2;
+}
+
+message MerkleRootRequest {
+  string range_start = 1;
+  string range_end = 2;
+}
+
+message MerkleRootResponse {
+  Status status = 1;
+  bytes root_hash = 2;
+  uint64 item_count = 3;
+}
+
+message StreamRangeRequest {
+  string range_start = 1;
+  string range_end = 2;
+}
+
+message RepairKeysRequest {
+  repeated KeyEnvelope rows = 1;
+}
+
+message SnapshotRequest {
+  string range_start = 1;
+  string range_end = 2;
+}
+
+message SnapshotFile {
+  int32 level = 1;
+  string path = 2;
+  int64 size = 3;
+}
+
+message SnapshotResponse {
+  Status status = 1;
+  uint64 lsn = 2;
+  repeated SnapshotFile files = 3;
+}
+
+message WALStreamRequest {
+  uint64 after_lsn = 1;
+}
+
+message WALEntry {
+  uint64 lsn = 1;
+  string key = 2;
+  Envelope envelope = 3;
+  bool deleted = 4;
+}
+
+service NodeService {
+  rpc Put(PutRequest) returns (WriteResponse);
+  rpc Delete(DeleteRequest) returns (WriteResponse);
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc RangeScan(RangeScanRequest) returns (RangeScanResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+service ReplicationService {
+  rpc ReplicatePut(ReplicatePutRequest) returns (WriteResponse);
+  rpc ReplicateDelete(ReplicateDeleteRequest) returns (WriteResponse);
+  rpc FetchVersion(FetchVersionRequest) returns (FetchVersionResponse);
+}
+
+service GossipService {
+  rpc Gossip(GossipRequest) returns (GossipResponse);
+  rpc Ping(PingRequest) returns (PingResponse);
+}
+
+service AntiEntropyService {
+  rpc GetMerkleRoot(MerkleRootRequest) returns (MerkleRootResponse);
+  rpc StreamRange(StreamRangeRequest) returns (stream KeyEnvelope);
+  rpc RepairKeys(RepairKeysRequest) returns (WriteResponse);
+}
+
+service BootstrapService {
+  rpc GetSnapshot(SnapshotRequest) returns (SnapshotResponse);
+  rpc StreamWAL(WALStreamRequest) returns (stream WALEntry);
+}
