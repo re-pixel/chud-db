@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"sort"
 
-	"nosqlEngine/src/cluster/node"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/cluster/versioning"
 )
@@ -68,22 +67,22 @@ func EnvelopeFromProto(envelope *pb.Envelope) (versioning.Envelope, error) {
 	return versioning.Decode(encoded)
 }
 
-func KeyEnvelopeToProto(row node.KeyEnvelope) *pb.KeyEnvelope {
+func KeyEnvelopeToProto(row versioning.KeyEnvelope) *pb.KeyEnvelope {
 	return &pb.KeyEnvelope{
 		Key:      row.Key,
 		Envelope: EnvelopeToProto(row.Envelope),
 	}
 }
 
-func KeyEnvelopeFromProto(row *pb.KeyEnvelope) (node.KeyEnvelope, error) {
+func KeyEnvelopeFromProto(row *pb.KeyEnvelope) (versioning.KeyEnvelope, error) {
 	if row == nil {
-		return node.KeyEnvelope{}, fmt.Errorf("key envelope is nil")
+		return versioning.KeyEnvelope{}, fmt.Errorf("key envelope is nil")
 	}
 	envelope, err := EnvelopeFromProto(row.GetEnvelope())
 	if err != nil {
-		return node.KeyEnvelope{}, fmt.Errorf("key %q: %w", row.GetKey(), err)
+		return versioning.KeyEnvelope{}, fmt.Errorf("key %q: %w", row.GetKey(), err)
 	}
-	return node.KeyEnvelope{Key: row.GetKey(), Envelope: envelope}, nil
+	return versioning.KeyEnvelope{Key: row.GetKey(), Envelope: envelope}, nil
 }
 
 func OKStatus() *pb.Status {

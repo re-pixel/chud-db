@@ -20,11 +20,6 @@ type NodeStore struct {
 	user   string
 }
 
-type KeyEnvelope struct {
-	Key      string
-	Envelope versioning.Envelope
-}
-
 func NewNodeStore(engine LocalEngine, user string) *NodeStore {
 	if user == "" {
 		user = DefaultStoreUser
@@ -61,13 +56,13 @@ func (s *NodeStore) Get(key string) (versioning.Envelope, bool, error) {
 	return envelope, true, nil
 }
 
-func (s *NodeStore) ScanRange(start, end string, pageNum, pageSize int) ([]KeyEnvelope, error) {
+func (s *NodeStore) ScanRange(start, end string, pageNum, pageSize int) ([]versioning.KeyEnvelope, error) {
 	rows, err := s.engine.RangeScan(s.user, start, end, pageNum, pageSize)
 	if err != nil {
 		return nil, err
 	}
 
-	results := make([]KeyEnvelope, 0, len(rows))
+	results := make([]versioning.KeyEnvelope, 0, len(rows))
 	for _, row := range rows {
 		if len(row) < 2 {
 			return nil, fmt.Errorf("range scan returned malformed row: %#v", row)
@@ -76,7 +71,7 @@ func (s *NodeStore) ScanRange(start, end string, pageNum, pageSize int) ([]KeyEn
 		if err != nil {
 			return nil, fmt.Errorf("decode %q: %w", row[0], err)
 		}
-		results = append(results, KeyEnvelope{Key: row[0], Envelope: envelope})
+		results = append(results, versioning.KeyEnvelope{Key: row[0], Envelope: envelope})
 	}
 	return results, nil
 }

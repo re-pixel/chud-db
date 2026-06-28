@@ -6,7 +6,6 @@ import (
 	"testing"
 	"time"
 
-	"nosqlEngine/src/cluster/node"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/cluster/versioning"
 )
@@ -110,7 +109,7 @@ func TestEnvelopeFromProtoRejectsInvalidEnvelope(t *testing.T) {
 }
 
 func TestKeyEnvelopeRoundTrip(t *testing.T) {
-	row := node.KeyEnvelope{
+	row := versioning.KeyEnvelope{
 		Key:      "key",
 		Envelope: versioning.NewPut(versioning.VectorClock{"node-a": 1}, "value", time.Unix(0, 1)),
 	}

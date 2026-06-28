@@ -20,6 +20,11 @@ type Envelope struct {
 	Value             string      `json:"value,omitempty"`
 }
 
+type KeyEnvelope struct {
+	Key      string
+	Envelope Envelope
+}
+
 func NewPut(clock VectorClock, value string, now time.Time) Envelope {
 	return Envelope{
 		Version:           EnvelopeVersion,
