@@ -39,16 +39,16 @@ func Merge(a, b VectorClock) VectorClock {
 }
 
 func Compare(a, b VectorClock) Relation {
-	aLower := false
-	bLower := false
+	aLess := false
+	aGreater := false
 
 	for nodeID, aCounter := range a {
 		bCounter := b[nodeID]
 		if aCounter < bCounter {
-			aLower = true
+			aLess = true
 		}
-		if bCounter < aCounter {
-			bLower = true
+		if aCounter > bCounter {
+			aGreater = true
 		}
 	}
 
@@ -57,16 +57,16 @@ func Compare(a, b VectorClock) Relation {
 			continue
 		}
 		if bCounter > 0 {
-			aLower = true
+			aLess = true
 		}
 	}
 
 	switch {
-	case !aLower && !bLower:
+	case !aLess && !aGreater:
 		return Equal
-	case aLower && !bLower:
+	case aLess && !aGreater:
 		return Before
-	case !aLower && bLower:
+	case !aLess && aGreater:
 		return After
 	default:
 		return Concurrent
