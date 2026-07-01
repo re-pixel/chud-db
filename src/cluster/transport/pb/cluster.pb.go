@@ -21,6 +21,58 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type MemberStatus int32
+
+const (
+	MemberStatus_MEMBER_STATUS_UNKNOWN MemberStatus = 0
+	MemberStatus_MEMBER_STATUS_ALIVE   MemberStatus = 1
+	MemberStatus_MEMBER_STATUS_SUSPECT MemberStatus = 2
+	MemberStatus_MEMBER_STATUS_DEAD    MemberStatus = 3
+)
+
+// Enum value maps for MemberStatus.
+var (
+	MemberStatus_name = map[int32]string{
+		0: "MEMBER_STATUS_UNKNOWN",
+		1: "MEMBER_STATUS_ALIVE",
+		2: "MEMBER_STATUS_SUSPECT",
+		3: "MEMBER_STATUS_DEAD",
+	}
+	MemberStatus_value = map[string]int32{
+		"MEMBER_STATUS_UNKNOWN": 0,
+		"MEMBER_STATUS_ALIVE":   1,
+		"MEMBER_STATUS_SUSPECT": 2,
+		"MEMBER_STATUS_DEAD":    3,
+	}
+)
+
+func (x MemberStatus) Enum() *MemberStatus {
+	p := new(MemberStatus)
+	*p = x
+	return p
+}
+
+func (x MemberStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (MemberStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_cluster_v1_cluster_proto_enumTypes[0].Descriptor()
+}
+
+func (MemberStatus) Type() protoreflect.EnumType {
+	return &file_cluster_v1_cluster_proto_enumTypes[0]
+}
+
+func (x MemberStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use MemberStatus.Descriptor instead.
+func (MemberStatus) EnumDescriptor() ([]byte, []int) {
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{0}
+}
+
 type VectorClockEntry struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	NodeId        string                 `protobuf:"bytes,1,opt,name=node_id,json=nodeId,proto3" json:"node_id,omitempty"`
@@ -1049,18 +1101,101 @@ func (x *FetchVersionResponse) GetEnvelope() *Envelope {
 	return nil
 }
 
+type MemberState struct {
+	state            protoimpl.MessageState `protogen:"open.v1"`
+	Node             *NodeInfo              `protobuf:"bytes,1,opt,name=node,proto3" json:"node,omitempty"`
+	Status           MemberStatus           `protobuf:"varint,2,opt,name=status,proto3,enum=nosql.cluster.v1.MemberStatus" json:"status,omitempty"`
+	Incarnation      uint64                 `protobuf:"varint,3,opt,name=incarnation,proto3" json:"incarnation,omitempty"`
+	LastSeenUnixNano int64                  `protobuf:"varint,4,opt,name=last_seen_unix_nano,json=lastSeenUnixNano,proto3" json:"last_seen_unix_nano,omitempty"`
+	MembershipEpoch  uint64                 `protobuf:"varint,5,opt,name=membership_epoch,json=membershipEpoch,proto3" json:"membership_epoch,omitempty"`
+	RangeMapEpoch    uint64                 `protobuf:"varint,6,opt,name=range_map_epoch,json=rangeMapEpoch,proto3" json:"range_map_epoch,omitempty"`
+	unknownFields    protoimpl.UnknownFields
+	sizeCache        protoimpl.SizeCache
+}
+
+func (x *MemberState) Reset() {
+	*x = MemberState{}
+	mi := &file_cluster_v1_cluster_proto_msgTypes[19]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *MemberState) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*MemberState) ProtoMessage() {}
+
+func (x *MemberState) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_v1_cluster_proto_msgTypes[19]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use MemberState.ProtoReflect.Descriptor instead.
+func (*MemberState) Descriptor() ([]byte, []int) {
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{19}
+}
+
+func (x *MemberState) GetNode() *NodeInfo {
+	if x != nil {
+		return x.Node
+	}
+	return nil
+}
+
+func (x *MemberState) GetStatus() MemberStatus {
+	if x != nil {
+		return x.Status
+	}
+	return MemberStatus_MEMBER_STATUS_UNKNOWN
+}
+
+func (x *MemberState) GetIncarnation() uint64 {
+	if x != nil {
+		return x.Incarnation
+	}
+	return 0
+}
+
+func (x *MemberState) GetLastSeenUnixNano() int64 {
+	if x != nil {
+		return x.LastSeenUnixNano
+	}
+	return 0
+}
+
+func (x *MemberState) GetMembershipEpoch() uint64 {
+	if x != nil {
+		return x.MembershipEpoch
+	}
+	return 0
+}
+
+func (x *MemberState) GetRangeMapEpoch() uint64 {
+	if x != nil {
+		return x.RangeMapEpoch
+	}
+	return 0
+}
+
 type GossipRequest struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Sender          *NodeInfo              `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
-	KnownNodes      []*NodeInfo            `protobuf:"bytes,2,rep,name=known_nodes,json=knownNodes,proto3" json:"known_nodes,omitempty"`
-	MembershipEpoch uint64                 `protobuf:"varint,3,opt,name=membership_epoch,json=membershipEpoch,proto3" json:"membership_epoch,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sender        *MemberState           `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	Membership    []*MemberState         `protobuf:"bytes,2,rep,name=membership,proto3" json:"membership,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GossipRequest) Reset() {
 	*x = GossipRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[19]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1072,7 +1207,7 @@ func (x *GossipRequest) String() string {
 func (*GossipRequest) ProtoMessage() {}
 
 func (x *GossipRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[19]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1085,42 +1220,34 @@ func (x *GossipRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GossipRequest.ProtoReflect.Descriptor instead.
 func (*GossipRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{19}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{20}
 }
 
-func (x *GossipRequest) GetSender() *NodeInfo {
+func (x *GossipRequest) GetSender() *MemberState {
 	if x != nil {
 		return x.Sender
 	}
 	return nil
 }
 
-func (x *GossipRequest) GetKnownNodes() []*NodeInfo {
+func (x *GossipRequest) GetMembership() []*MemberState {
 	if x != nil {
-		return x.KnownNodes
+		return x.Membership
 	}
 	return nil
 }
 
-func (x *GossipRequest) GetMembershipEpoch() uint64 {
-	if x != nil {
-		return x.MembershipEpoch
-	}
-	return 0
-}
-
 type GossipResponse struct {
-	state           protoimpl.MessageState `protogen:"open.v1"`
-	Status          *Status                `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	KnownNodes      []*NodeInfo            `protobuf:"bytes,2,rep,name=known_nodes,json=knownNodes,proto3" json:"known_nodes,omitempty"`
-	MembershipEpoch uint64                 `protobuf:"varint,3,opt,name=membership_epoch,json=membershipEpoch,proto3" json:"membership_epoch,omitempty"`
-	unknownFields   protoimpl.UnknownFields
-	sizeCache       protoimpl.SizeCache
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Status        *Status                `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	Membership    []*MemberState         `protobuf:"bytes,2,rep,name=membership,proto3" json:"membership,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *GossipResponse) Reset() {
 	*x = GossipResponse{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[20]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1132,7 +1259,7 @@ func (x *GossipResponse) String() string {
 func (*GossipResponse) ProtoMessage() {}
 
 func (x *GossipResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[20]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1145,7 +1272,7 @@ func (x *GossipResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GossipResponse.ProtoReflect.Descriptor instead.
 func (*GossipResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{20}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *GossipResponse) GetStatus() *Status {
@@ -1155,30 +1282,24 @@ func (x *GossipResponse) GetStatus() *Status {
 	return nil
 }
 
-func (x *GossipResponse) GetKnownNodes() []*NodeInfo {
+func (x *GossipResponse) GetMembership() []*MemberState {
 	if x != nil {
-		return x.KnownNodes
+		return x.Membership
 	}
 	return nil
 }
 
-func (x *GossipResponse) GetMembershipEpoch() uint64 {
-	if x != nil {
-		return x.MembershipEpoch
-	}
-	return 0
-}
-
 type PingRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Sender        *NodeInfo              `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	Sender        *MemberState           `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	TargetNodeId  string                 `protobuf:"bytes,2,opt,name=target_node_id,json=targetNodeId,proto3" json:"target_node_id,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PingRequest) Reset() {
 	*x = PingRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[21]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1190,7 +1311,7 @@ func (x *PingRequest) String() string {
 func (*PingRequest) ProtoMessage() {}
 
 func (x *PingRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[21]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1203,27 +1324,34 @@ func (x *PingRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingRequest.ProtoReflect.Descriptor instead.
 func (*PingRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{21}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{22}
 }
 
-func (x *PingRequest) GetSender() *NodeInfo {
+func (x *PingRequest) GetSender() *MemberState {
 	if x != nil {
 		return x.Sender
 	}
 	return nil
 }
 
+func (x *PingRequest) GetTargetNodeId() string {
+	if x != nil {
+		return x.TargetNodeId
+	}
+	return ""
+}
+
 type PingResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Status        *Status                `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
-	Responder     *NodeInfo              `protobuf:"bytes,2,opt,name=responder,proto3" json:"responder,omitempty"`
+	Responder     *MemberState           `protobuf:"bytes,2,opt,name=responder,proto3" json:"responder,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *PingResponse) Reset() {
 	*x = PingResponse{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[22]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1235,7 +1363,7 @@ func (x *PingResponse) String() string {
 func (*PingResponse) ProtoMessage() {}
 
 func (x *PingResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[22]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1248,7 +1376,7 @@ func (x *PingResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PingResponse.ProtoReflect.Descriptor instead.
 func (*PingResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{22}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *PingResponse) GetStatus() *Status {
@@ -1258,7 +1386,119 @@ func (x *PingResponse) GetStatus() *Status {
 	return nil
 }
 
-func (x *PingResponse) GetResponder() *NodeInfo {
+func (x *PingResponse) GetResponder() *MemberState {
+	if x != nil {
+		return x.Responder
+	}
+	return nil
+}
+
+type IndirectPingRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Sender        *MemberState           `protobuf:"bytes,1,opt,name=sender,proto3" json:"sender,omitempty"`
+	Target        *NodeInfo              `protobuf:"bytes,2,opt,name=target,proto3" json:"target,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *IndirectPingRequest) Reset() {
+	*x = IndirectPingRequest{}
+	mi := &file_cluster_v1_cluster_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndirectPingRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndirectPingRequest) ProtoMessage() {}
+
+func (x *IndirectPingRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_v1_cluster_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndirectPingRequest.ProtoReflect.Descriptor instead.
+func (*IndirectPingRequest) Descriptor() ([]byte, []int) {
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *IndirectPingRequest) GetSender() *MemberState {
+	if x != nil {
+		return x.Sender
+	}
+	return nil
+}
+
+func (x *IndirectPingRequest) GetTarget() *NodeInfo {
+	if x != nil {
+		return x.Target
+	}
+	return nil
+}
+
+type IndirectPingResponse struct {
+	state              protoimpl.MessageState `protogen:"open.v1"`
+	Status             *Status                `protobuf:"bytes,1,opt,name=status,proto3" json:"status,omitempty"`
+	TargetAcknowledged bool                   `protobuf:"varint,2,opt,name=target_acknowledged,json=targetAcknowledged,proto3" json:"target_acknowledged,omitempty"`
+	Responder          *MemberState           `protobuf:"bytes,3,opt,name=responder,proto3" json:"responder,omitempty"`
+	unknownFields      protoimpl.UnknownFields
+	sizeCache          protoimpl.SizeCache
+}
+
+func (x *IndirectPingResponse) Reset() {
+	*x = IndirectPingResponse{}
+	mi := &file_cluster_v1_cluster_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *IndirectPingResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*IndirectPingResponse) ProtoMessage() {}
+
+func (x *IndirectPingResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_cluster_v1_cluster_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use IndirectPingResponse.ProtoReflect.Descriptor instead.
+func (*IndirectPingResponse) Descriptor() ([]byte, []int) {
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *IndirectPingResponse) GetStatus() *Status {
+	if x != nil {
+		return x.Status
+	}
+	return nil
+}
+
+func (x *IndirectPingResponse) GetTargetAcknowledged() bool {
+	if x != nil {
+		return x.TargetAcknowledged
+	}
+	return false
+}
+
+func (x *IndirectPingResponse) GetResponder() *MemberState {
 	if x != nil {
 		return x.Responder
 	}
@@ -1275,7 +1515,7 @@ type MerkleRootRequest struct {
 
 func (x *MerkleRootRequest) Reset() {
 	*x = MerkleRootRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[23]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1287,7 +1527,7 @@ func (x *MerkleRootRequest) String() string {
 func (*MerkleRootRequest) ProtoMessage() {}
 
 func (x *MerkleRootRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[23]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1300,7 +1540,7 @@ func (x *MerkleRootRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MerkleRootRequest.ProtoReflect.Descriptor instead.
 func (*MerkleRootRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{23}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *MerkleRootRequest) GetRangeStart() string {
@@ -1328,7 +1568,7 @@ type MerkleRootResponse struct {
 
 func (x *MerkleRootResponse) Reset() {
 	*x = MerkleRootResponse{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[24]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1340,7 +1580,7 @@ func (x *MerkleRootResponse) String() string {
 func (*MerkleRootResponse) ProtoMessage() {}
 
 func (x *MerkleRootResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[24]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1353,7 +1593,7 @@ func (x *MerkleRootResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use MerkleRootResponse.ProtoReflect.Descriptor instead.
 func (*MerkleRootResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{24}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *MerkleRootResponse) GetStatus() *Status {
@@ -1387,7 +1627,7 @@ type StreamRangeRequest struct {
 
 func (x *StreamRangeRequest) Reset() {
 	*x = StreamRangeRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[25]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1399,7 +1639,7 @@ func (x *StreamRangeRequest) String() string {
 func (*StreamRangeRequest) ProtoMessage() {}
 
 func (x *StreamRangeRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[25]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1412,7 +1652,7 @@ func (x *StreamRangeRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use StreamRangeRequest.ProtoReflect.Descriptor instead.
 func (*StreamRangeRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{25}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *StreamRangeRequest) GetRangeStart() string {
@@ -1438,7 +1678,7 @@ type RepairKeysRequest struct {
 
 func (x *RepairKeysRequest) Reset() {
 	*x = RepairKeysRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[26]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1450,7 +1690,7 @@ func (x *RepairKeysRequest) String() string {
 func (*RepairKeysRequest) ProtoMessage() {}
 
 func (x *RepairKeysRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[26]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1463,7 +1703,7 @@ func (x *RepairKeysRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RepairKeysRequest.ProtoReflect.Descriptor instead.
 func (*RepairKeysRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{26}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RepairKeysRequest) GetRows() []*KeyEnvelope {
@@ -1483,7 +1723,7 @@ type SnapshotRequest struct {
 
 func (x *SnapshotRequest) Reset() {
 	*x = SnapshotRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[27]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1495,7 +1735,7 @@ func (x *SnapshotRequest) String() string {
 func (*SnapshotRequest) ProtoMessage() {}
 
 func (x *SnapshotRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[27]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1508,7 +1748,7 @@ func (x *SnapshotRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotRequest.ProtoReflect.Descriptor instead.
 func (*SnapshotRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{27}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *SnapshotRequest) GetRangeStart() string {
@@ -1536,7 +1776,7 @@ type SnapshotFile struct {
 
 func (x *SnapshotFile) Reset() {
 	*x = SnapshotFile{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[28]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1548,7 +1788,7 @@ func (x *SnapshotFile) String() string {
 func (*SnapshotFile) ProtoMessage() {}
 
 func (x *SnapshotFile) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[28]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1561,7 +1801,7 @@ func (x *SnapshotFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotFile.ProtoReflect.Descriptor instead.
 func (*SnapshotFile) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{28}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *SnapshotFile) GetLevel() int32 {
@@ -1596,7 +1836,7 @@ type SnapshotResponse struct {
 
 func (x *SnapshotResponse) Reset() {
 	*x = SnapshotResponse{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[29]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[32]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1608,7 +1848,7 @@ func (x *SnapshotResponse) String() string {
 func (*SnapshotResponse) ProtoMessage() {}
 
 func (x *SnapshotResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[29]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[32]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1621,7 +1861,7 @@ func (x *SnapshotResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SnapshotResponse.ProtoReflect.Descriptor instead.
 func (*SnapshotResponse) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{29}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{32}
 }
 
 func (x *SnapshotResponse) GetStatus() *Status {
@@ -1654,7 +1894,7 @@ type WALStreamRequest struct {
 
 func (x *WALStreamRequest) Reset() {
 	*x = WALStreamRequest{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[30]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[33]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1666,7 +1906,7 @@ func (x *WALStreamRequest) String() string {
 func (*WALStreamRequest) ProtoMessage() {}
 
 func (x *WALStreamRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[30]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[33]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1679,7 +1919,7 @@ func (x *WALStreamRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WALStreamRequest.ProtoReflect.Descriptor instead.
 func (*WALStreamRequest) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{30}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{33}
 }
 
 func (x *WALStreamRequest) GetAfterLsn() uint64 {
@@ -1701,7 +1941,7 @@ type WALEntry struct {
 
 func (x *WALEntry) Reset() {
 	*x = WALEntry{}
-	mi := &file_cluster_v1_cluster_proto_msgTypes[31]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[34]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1713,7 +1953,7 @@ func (x *WALEntry) String() string {
 func (*WALEntry) ProtoMessage() {}
 
 func (x *WALEntry) ProtoReflect() protoreflect.Message {
-	mi := &file_cluster_v1_cluster_proto_msgTypes[31]
+	mi := &file_cluster_v1_cluster_proto_msgTypes[34]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1726,7 +1966,7 @@ func (x *WALEntry) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WALEntry.ProtoReflect.Descriptor instead.
 func (*WALEntry) Descriptor() ([]byte, []int) {
-	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{31}
+	return file_cluster_v1_cluster_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *WALEntry) GetLsn() uint64 {
@@ -1826,22 +2066,37 @@ const file_cluster_v1_cluster_proto_rawDesc = "" +
 	"\x14FetchVersionResponse\x120\n" +
 	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x12\x14\n" +
 	"\x05found\x18\x02 \x01(\bR\x05found\x126\n" +
-	"\benvelope\x18\x03 \x01(\v2\x1a.nosql.cluster.v1.EnvelopeR\benvelope\"\xab\x01\n" +
-	"\rGossipRequest\x122\n" +
-	"\x06sender\x18\x01 \x01(\v2\x1a.nosql.cluster.v1.NodeInfoR\x06sender\x12;\n" +
-	"\vknown_nodes\x18\x02 \x03(\v2\x1a.nosql.cluster.v1.NodeInfoR\n" +
-	"knownNodes\x12)\n" +
-	"\x10membership_epoch\x18\x03 \x01(\x04R\x0fmembershipEpoch\"\xaa\x01\n" +
+	"\benvelope\x18\x03 \x01(\v2\x1a.nosql.cluster.v1.EnvelopeR\benvelope\"\x99\x02\n" +
+	"\vMemberState\x12.\n" +
+	"\x04node\x18\x01 \x01(\v2\x1a.nosql.cluster.v1.NodeInfoR\x04node\x126\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x1e.nosql.cluster.v1.MemberStatusR\x06status\x12 \n" +
+	"\vincarnation\x18\x03 \x01(\x04R\vincarnation\x12-\n" +
+	"\x13last_seen_unix_nano\x18\x04 \x01(\x03R\x10lastSeenUnixNano\x12)\n" +
+	"\x10membership_epoch\x18\x05 \x01(\x04R\x0fmembershipEpoch\x12&\n" +
+	"\x0frange_map_epoch\x18\x06 \x01(\x04R\rrangeMapEpoch\"\x85\x01\n" +
+	"\rGossipRequest\x125\n" +
+	"\x06sender\x18\x01 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\x06sender\x12=\n" +
+	"\n" +
+	"membership\x18\x02 \x03(\v2\x1d.nosql.cluster.v1.MemberStateR\n" +
+	"membership\"\x81\x01\n" +
 	"\x0eGossipResponse\x120\n" +
-	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x12;\n" +
-	"\vknown_nodes\x18\x02 \x03(\v2\x1a.nosql.cluster.v1.NodeInfoR\n" +
-	"knownNodes\x12)\n" +
-	"\x10membership_epoch\x18\x03 \x01(\x04R\x0fmembershipEpoch\"A\n" +
-	"\vPingRequest\x122\n" +
-	"\x06sender\x18\x01 \x01(\v2\x1a.nosql.cluster.v1.NodeInfoR\x06sender\"z\n" +
+	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x12=\n" +
+	"\n" +
+	"membership\x18\x02 \x03(\v2\x1d.nosql.cluster.v1.MemberStateR\n" +
+	"membership\"j\n" +
+	"\vPingRequest\x125\n" +
+	"\x06sender\x18\x01 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\x06sender\x12$\n" +
+	"\x0etarget_node_id\x18\x02 \x01(\tR\ftargetNodeId\"}\n" +
 	"\fPingResponse\x120\n" +
-	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x128\n" +
-	"\tresponder\x18\x02 \x01(\v2\x1a.nosql.cluster.v1.NodeInfoR\tresponder\"Q\n" +
+	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x12;\n" +
+	"\tresponder\x18\x02 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\tresponder\"\x80\x01\n" +
+	"\x13IndirectPingRequest\x125\n" +
+	"\x06sender\x18\x01 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\x06sender\x122\n" +
+	"\x06target\x18\x02 \x01(\v2\x1a.nosql.cluster.v1.NodeInfoR\x06target\"\xb6\x01\n" +
+	"\x14IndirectPingResponse\x120\n" +
+	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x12/\n" +
+	"\x13target_acknowledged\x18\x02 \x01(\bR\x12targetAcknowledged\x12;\n" +
+	"\tresponder\x18\x03 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\tresponder\"Q\n" +
 	"\x11MerkleRootRequest\x12\x1f\n" +
 	"\vrange_start\x18\x01 \x01(\tR\n" +
 	"rangeStart\x12\x1b\n" +
@@ -1875,7 +2130,12 @@ const file_cluster_v1_cluster_proto_rawDesc = "" +
 	"\x03lsn\x18\x01 \x01(\x04R\x03lsn\x12\x10\n" +
 	"\x03key\x18\x02 \x01(\tR\x03key\x126\n" +
 	"\benvelope\x18\x03 \x01(\v2\x1a.nosql.cluster.v1.EnvelopeR\benvelope\x12\x18\n" +
-	"\adeleted\x18\x04 \x01(\bR\adeleted2\x86\x03\n" +
+	"\adeleted\x18\x04 \x01(\bR\adeleted*u\n" +
+	"\fMemberStatus\x12\x19\n" +
+	"\x15MEMBER_STATUS_UNKNOWN\x10\x00\x12\x17\n" +
+	"\x13MEMBER_STATUS_ALIVE\x10\x01\x12\x19\n" +
+	"\x15MEMBER_STATUS_SUSPECT\x10\x02\x12\x16\n" +
+	"\x12MEMBER_STATUS_DEAD\x10\x032\x86\x03\n" +
 	"\vNodeService\x12D\n" +
 	"\x03Put\x12\x1c.nosql.cluster.v1.PutRequest\x1a\x1f.nosql.cluster.v1.WriteResponse\x12J\n" +
 	"\x06Delete\x12\x1f.nosql.cluster.v1.DeleteRequest\x1a\x1f.nosql.cluster.v1.WriteResponse\x12B\n" +
@@ -1885,10 +2145,11 @@ const file_cluster_v1_cluster_proto_rawDesc = "" +
 	"\x12ReplicationService\x12V\n" +
 	"\fReplicatePut\x12%.nosql.cluster.v1.ReplicatePutRequest\x1a\x1f.nosql.cluster.v1.WriteResponse\x12\\\n" +
 	"\x0fReplicateDelete\x12(.nosql.cluster.v1.ReplicateDeleteRequest\x1a\x1f.nosql.cluster.v1.WriteResponse\x12]\n" +
-	"\fFetchVersion\x12%.nosql.cluster.v1.FetchVersionRequest\x1a&.nosql.cluster.v1.FetchVersionResponse2\xa3\x01\n" +
+	"\fFetchVersion\x12%.nosql.cluster.v1.FetchVersionRequest\x1a&.nosql.cluster.v1.FetchVersionResponse2\x82\x02\n" +
 	"\rGossipService\x12K\n" +
 	"\x06Gossip\x12\x1f.nosql.cluster.v1.GossipRequest\x1a .nosql.cluster.v1.GossipResponse\x12E\n" +
-	"\x04Ping\x12\x1d.nosql.cluster.v1.PingRequest\x1a\x1e.nosql.cluster.v1.PingResponse2\x9a\x02\n" +
+	"\x04Ping\x12\x1d.nosql.cluster.v1.PingRequest\x1a\x1e.nosql.cluster.v1.PingResponse\x12]\n" +
+	"\fIndirectPing\x12%.nosql.cluster.v1.IndirectPingRequest\x1a&.nosql.cluster.v1.IndirectPingResponse2\x9a\x02\n" +
 	"\x12AntiEntropyService\x12Z\n" +
 	"\rGetMerkleRoot\x12#.nosql.cluster.v1.MerkleRootRequest\x1a$.nosql.cluster.v1.MerkleRootResponse\x12T\n" +
 	"\vStreamRange\x12$.nosql.cluster.v1.StreamRangeRequest\x1a\x1d.nosql.cluster.v1.KeyEnvelope0\x01\x12R\n" +
@@ -1910,105 +2171,118 @@ func file_cluster_v1_cluster_proto_rawDescGZIP() []byte {
 	return file_cluster_v1_cluster_proto_rawDescData
 }
 
-var file_cluster_v1_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
+var file_cluster_v1_cluster_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_cluster_v1_cluster_proto_msgTypes = make([]protoimpl.MessageInfo, 35)
 var file_cluster_v1_cluster_proto_goTypes = []any{
-	(*VectorClockEntry)(nil),       // 0: nosql.cluster.v1.VectorClockEntry
-	(*VectorClock)(nil),            // 1: nosql.cluster.v1.VectorClock
-	(*Envelope)(nil),               // 2: nosql.cluster.v1.Envelope
-	(*KeyEnvelope)(nil),            // 3: nosql.cluster.v1.KeyEnvelope
-	(*Status)(nil),                 // 4: nosql.cluster.v1.Status
-	(*NodeInfo)(nil),               // 5: nosql.cluster.v1.NodeInfo
-	(*PutRequest)(nil),             // 6: nosql.cluster.v1.PutRequest
-	(*DeleteRequest)(nil),          // 7: nosql.cluster.v1.DeleteRequest
-	(*WriteResponse)(nil),          // 8: nosql.cluster.v1.WriteResponse
-	(*GetRequest)(nil),             // 9: nosql.cluster.v1.GetRequest
-	(*GetResponse)(nil),            // 10: nosql.cluster.v1.GetResponse
-	(*RangeScanRequest)(nil),       // 11: nosql.cluster.v1.RangeScanRequest
-	(*RangeScanResponse)(nil),      // 12: nosql.cluster.v1.RangeScanResponse
-	(*HealthRequest)(nil),          // 13: nosql.cluster.v1.HealthRequest
-	(*HealthResponse)(nil),         // 14: nosql.cluster.v1.HealthResponse
-	(*ReplicatePutRequest)(nil),    // 15: nosql.cluster.v1.ReplicatePutRequest
-	(*ReplicateDeleteRequest)(nil), // 16: nosql.cluster.v1.ReplicateDeleteRequest
-	(*FetchVersionRequest)(nil),    // 17: nosql.cluster.v1.FetchVersionRequest
-	(*FetchVersionResponse)(nil),   // 18: nosql.cluster.v1.FetchVersionResponse
-	(*GossipRequest)(nil),          // 19: nosql.cluster.v1.GossipRequest
-	(*GossipResponse)(nil),         // 20: nosql.cluster.v1.GossipResponse
-	(*PingRequest)(nil),            // 21: nosql.cluster.v1.PingRequest
-	(*PingResponse)(nil),           // 22: nosql.cluster.v1.PingResponse
-	(*MerkleRootRequest)(nil),      // 23: nosql.cluster.v1.MerkleRootRequest
-	(*MerkleRootResponse)(nil),     // 24: nosql.cluster.v1.MerkleRootResponse
-	(*StreamRangeRequest)(nil),     // 25: nosql.cluster.v1.StreamRangeRequest
-	(*RepairKeysRequest)(nil),      // 26: nosql.cluster.v1.RepairKeysRequest
-	(*SnapshotRequest)(nil),        // 27: nosql.cluster.v1.SnapshotRequest
-	(*SnapshotFile)(nil),           // 28: nosql.cluster.v1.SnapshotFile
-	(*SnapshotResponse)(nil),       // 29: nosql.cluster.v1.SnapshotResponse
-	(*WALStreamRequest)(nil),       // 30: nosql.cluster.v1.WALStreamRequest
-	(*WALEntry)(nil),               // 31: nosql.cluster.v1.WALEntry
+	(MemberStatus)(0),              // 0: nosql.cluster.v1.MemberStatus
+	(*VectorClockEntry)(nil),       // 1: nosql.cluster.v1.VectorClockEntry
+	(*VectorClock)(nil),            // 2: nosql.cluster.v1.VectorClock
+	(*Envelope)(nil),               // 3: nosql.cluster.v1.Envelope
+	(*KeyEnvelope)(nil),            // 4: nosql.cluster.v1.KeyEnvelope
+	(*Status)(nil),                 // 5: nosql.cluster.v1.Status
+	(*NodeInfo)(nil),               // 6: nosql.cluster.v1.NodeInfo
+	(*PutRequest)(nil),             // 7: nosql.cluster.v1.PutRequest
+	(*DeleteRequest)(nil),          // 8: nosql.cluster.v1.DeleteRequest
+	(*WriteResponse)(nil),          // 9: nosql.cluster.v1.WriteResponse
+	(*GetRequest)(nil),             // 10: nosql.cluster.v1.GetRequest
+	(*GetResponse)(nil),            // 11: nosql.cluster.v1.GetResponse
+	(*RangeScanRequest)(nil),       // 12: nosql.cluster.v1.RangeScanRequest
+	(*RangeScanResponse)(nil),      // 13: nosql.cluster.v1.RangeScanResponse
+	(*HealthRequest)(nil),          // 14: nosql.cluster.v1.HealthRequest
+	(*HealthResponse)(nil),         // 15: nosql.cluster.v1.HealthResponse
+	(*ReplicatePutRequest)(nil),    // 16: nosql.cluster.v1.ReplicatePutRequest
+	(*ReplicateDeleteRequest)(nil), // 17: nosql.cluster.v1.ReplicateDeleteRequest
+	(*FetchVersionRequest)(nil),    // 18: nosql.cluster.v1.FetchVersionRequest
+	(*FetchVersionResponse)(nil),   // 19: nosql.cluster.v1.FetchVersionResponse
+	(*MemberState)(nil),            // 20: nosql.cluster.v1.MemberState
+	(*GossipRequest)(nil),          // 21: nosql.cluster.v1.GossipRequest
+	(*GossipResponse)(nil),         // 22: nosql.cluster.v1.GossipResponse
+	(*PingRequest)(nil),            // 23: nosql.cluster.v1.PingRequest
+	(*PingResponse)(nil),           // 24: nosql.cluster.v1.PingResponse
+	(*IndirectPingRequest)(nil),    // 25: nosql.cluster.v1.IndirectPingRequest
+	(*IndirectPingResponse)(nil),   // 26: nosql.cluster.v1.IndirectPingResponse
+	(*MerkleRootRequest)(nil),      // 27: nosql.cluster.v1.MerkleRootRequest
+	(*MerkleRootResponse)(nil),     // 28: nosql.cluster.v1.MerkleRootResponse
+	(*StreamRangeRequest)(nil),     // 29: nosql.cluster.v1.StreamRangeRequest
+	(*RepairKeysRequest)(nil),      // 30: nosql.cluster.v1.RepairKeysRequest
+	(*SnapshotRequest)(nil),        // 31: nosql.cluster.v1.SnapshotRequest
+	(*SnapshotFile)(nil),           // 32: nosql.cluster.v1.SnapshotFile
+	(*SnapshotResponse)(nil),       // 33: nosql.cluster.v1.SnapshotResponse
+	(*WALStreamRequest)(nil),       // 34: nosql.cluster.v1.WALStreamRequest
+	(*WALEntry)(nil),               // 35: nosql.cluster.v1.WALEntry
 }
 var file_cluster_v1_cluster_proto_depIdxs = []int32{
-	0,  // 0: nosql.cluster.v1.VectorClock.entries:type_name -> nosql.cluster.v1.VectorClockEntry
-	1,  // 1: nosql.cluster.v1.Envelope.vector_clock:type_name -> nosql.cluster.v1.VectorClock
-	2,  // 2: nosql.cluster.v1.KeyEnvelope.envelope:type_name -> nosql.cluster.v1.Envelope
-	2,  // 3: nosql.cluster.v1.PutRequest.envelope:type_name -> nosql.cluster.v1.Envelope
-	2,  // 4: nosql.cluster.v1.DeleteRequest.envelope:type_name -> nosql.cluster.v1.Envelope
-	4,  // 5: nosql.cluster.v1.WriteResponse.status:type_name -> nosql.cluster.v1.Status
-	4,  // 6: nosql.cluster.v1.GetResponse.status:type_name -> nosql.cluster.v1.Status
-	2,  // 7: nosql.cluster.v1.GetResponse.envelope:type_name -> nosql.cluster.v1.Envelope
-	4,  // 8: nosql.cluster.v1.RangeScanResponse.status:type_name -> nosql.cluster.v1.Status
-	3,  // 9: nosql.cluster.v1.RangeScanResponse.rows:type_name -> nosql.cluster.v1.KeyEnvelope
-	4,  // 10: nosql.cluster.v1.HealthResponse.status:type_name -> nosql.cluster.v1.Status
-	5,  // 11: nosql.cluster.v1.HealthResponse.node:type_name -> nosql.cluster.v1.NodeInfo
-	2,  // 12: nosql.cluster.v1.ReplicatePutRequest.envelope:type_name -> nosql.cluster.v1.Envelope
-	2,  // 13: nosql.cluster.v1.ReplicateDeleteRequest.envelope:type_name -> nosql.cluster.v1.Envelope
-	4,  // 14: nosql.cluster.v1.FetchVersionResponse.status:type_name -> nosql.cluster.v1.Status
-	2,  // 15: nosql.cluster.v1.FetchVersionResponse.envelope:type_name -> nosql.cluster.v1.Envelope
-	5,  // 16: nosql.cluster.v1.GossipRequest.sender:type_name -> nosql.cluster.v1.NodeInfo
-	5,  // 17: nosql.cluster.v1.GossipRequest.known_nodes:type_name -> nosql.cluster.v1.NodeInfo
-	4,  // 18: nosql.cluster.v1.GossipResponse.status:type_name -> nosql.cluster.v1.Status
-	5,  // 19: nosql.cluster.v1.GossipResponse.known_nodes:type_name -> nosql.cluster.v1.NodeInfo
-	5,  // 20: nosql.cluster.v1.PingRequest.sender:type_name -> nosql.cluster.v1.NodeInfo
-	4,  // 21: nosql.cluster.v1.PingResponse.status:type_name -> nosql.cluster.v1.Status
-	5,  // 22: nosql.cluster.v1.PingResponse.responder:type_name -> nosql.cluster.v1.NodeInfo
-	4,  // 23: nosql.cluster.v1.MerkleRootResponse.status:type_name -> nosql.cluster.v1.Status
-	3,  // 24: nosql.cluster.v1.RepairKeysRequest.rows:type_name -> nosql.cluster.v1.KeyEnvelope
-	4,  // 25: nosql.cluster.v1.SnapshotResponse.status:type_name -> nosql.cluster.v1.Status
-	28, // 26: nosql.cluster.v1.SnapshotResponse.files:type_name -> nosql.cluster.v1.SnapshotFile
-	2,  // 27: nosql.cluster.v1.WALEntry.envelope:type_name -> nosql.cluster.v1.Envelope
-	6,  // 28: nosql.cluster.v1.NodeService.Put:input_type -> nosql.cluster.v1.PutRequest
-	7,  // 29: nosql.cluster.v1.NodeService.Delete:input_type -> nosql.cluster.v1.DeleteRequest
-	9,  // 30: nosql.cluster.v1.NodeService.Get:input_type -> nosql.cluster.v1.GetRequest
-	11, // 31: nosql.cluster.v1.NodeService.RangeScan:input_type -> nosql.cluster.v1.RangeScanRequest
-	13, // 32: nosql.cluster.v1.NodeService.Health:input_type -> nosql.cluster.v1.HealthRequest
-	15, // 33: nosql.cluster.v1.ReplicationService.ReplicatePut:input_type -> nosql.cluster.v1.ReplicatePutRequest
-	16, // 34: nosql.cluster.v1.ReplicationService.ReplicateDelete:input_type -> nosql.cluster.v1.ReplicateDeleteRequest
-	17, // 35: nosql.cluster.v1.ReplicationService.FetchVersion:input_type -> nosql.cluster.v1.FetchVersionRequest
-	19, // 36: nosql.cluster.v1.GossipService.Gossip:input_type -> nosql.cluster.v1.GossipRequest
-	21, // 37: nosql.cluster.v1.GossipService.Ping:input_type -> nosql.cluster.v1.PingRequest
-	23, // 38: nosql.cluster.v1.AntiEntropyService.GetMerkleRoot:input_type -> nosql.cluster.v1.MerkleRootRequest
-	25, // 39: nosql.cluster.v1.AntiEntropyService.StreamRange:input_type -> nosql.cluster.v1.StreamRangeRequest
-	26, // 40: nosql.cluster.v1.AntiEntropyService.RepairKeys:input_type -> nosql.cluster.v1.RepairKeysRequest
-	27, // 41: nosql.cluster.v1.BootstrapService.GetSnapshot:input_type -> nosql.cluster.v1.SnapshotRequest
-	30, // 42: nosql.cluster.v1.BootstrapService.StreamWAL:input_type -> nosql.cluster.v1.WALStreamRequest
-	8,  // 43: nosql.cluster.v1.NodeService.Put:output_type -> nosql.cluster.v1.WriteResponse
-	8,  // 44: nosql.cluster.v1.NodeService.Delete:output_type -> nosql.cluster.v1.WriteResponse
-	10, // 45: nosql.cluster.v1.NodeService.Get:output_type -> nosql.cluster.v1.GetResponse
-	12, // 46: nosql.cluster.v1.NodeService.RangeScan:output_type -> nosql.cluster.v1.RangeScanResponse
-	14, // 47: nosql.cluster.v1.NodeService.Health:output_type -> nosql.cluster.v1.HealthResponse
-	8,  // 48: nosql.cluster.v1.ReplicationService.ReplicatePut:output_type -> nosql.cluster.v1.WriteResponse
-	8,  // 49: nosql.cluster.v1.ReplicationService.ReplicateDelete:output_type -> nosql.cluster.v1.WriteResponse
-	18, // 50: nosql.cluster.v1.ReplicationService.FetchVersion:output_type -> nosql.cluster.v1.FetchVersionResponse
-	20, // 51: nosql.cluster.v1.GossipService.Gossip:output_type -> nosql.cluster.v1.GossipResponse
-	22, // 52: nosql.cluster.v1.GossipService.Ping:output_type -> nosql.cluster.v1.PingResponse
-	24, // 53: nosql.cluster.v1.AntiEntropyService.GetMerkleRoot:output_type -> nosql.cluster.v1.MerkleRootResponse
-	3,  // 54: nosql.cluster.v1.AntiEntropyService.StreamRange:output_type -> nosql.cluster.v1.KeyEnvelope
-	8,  // 55: nosql.cluster.v1.AntiEntropyService.RepairKeys:output_type -> nosql.cluster.v1.WriteResponse
-	29, // 56: nosql.cluster.v1.BootstrapService.GetSnapshot:output_type -> nosql.cluster.v1.SnapshotResponse
-	31, // 57: nosql.cluster.v1.BootstrapService.StreamWAL:output_type -> nosql.cluster.v1.WALEntry
-	43, // [43:58] is the sub-list for method output_type
-	28, // [28:43] is the sub-list for method input_type
-	28, // [28:28] is the sub-list for extension type_name
-	28, // [28:28] is the sub-list for extension extendee
-	0,  // [0:28] is the sub-list for field type_name
+	1,  // 0: nosql.cluster.v1.VectorClock.entries:type_name -> nosql.cluster.v1.VectorClockEntry
+	2,  // 1: nosql.cluster.v1.Envelope.vector_clock:type_name -> nosql.cluster.v1.VectorClock
+	3,  // 2: nosql.cluster.v1.KeyEnvelope.envelope:type_name -> nosql.cluster.v1.Envelope
+	3,  // 3: nosql.cluster.v1.PutRequest.envelope:type_name -> nosql.cluster.v1.Envelope
+	3,  // 4: nosql.cluster.v1.DeleteRequest.envelope:type_name -> nosql.cluster.v1.Envelope
+	5,  // 5: nosql.cluster.v1.WriteResponse.status:type_name -> nosql.cluster.v1.Status
+	5,  // 6: nosql.cluster.v1.GetResponse.status:type_name -> nosql.cluster.v1.Status
+	3,  // 7: nosql.cluster.v1.GetResponse.envelope:type_name -> nosql.cluster.v1.Envelope
+	5,  // 8: nosql.cluster.v1.RangeScanResponse.status:type_name -> nosql.cluster.v1.Status
+	4,  // 9: nosql.cluster.v1.RangeScanResponse.rows:type_name -> nosql.cluster.v1.KeyEnvelope
+	5,  // 10: nosql.cluster.v1.HealthResponse.status:type_name -> nosql.cluster.v1.Status
+	6,  // 11: nosql.cluster.v1.HealthResponse.node:type_name -> nosql.cluster.v1.NodeInfo
+	3,  // 12: nosql.cluster.v1.ReplicatePutRequest.envelope:type_name -> nosql.cluster.v1.Envelope
+	3,  // 13: nosql.cluster.v1.ReplicateDeleteRequest.envelope:type_name -> nosql.cluster.v1.Envelope
+	5,  // 14: nosql.cluster.v1.FetchVersionResponse.status:type_name -> nosql.cluster.v1.Status
+	3,  // 15: nosql.cluster.v1.FetchVersionResponse.envelope:type_name -> nosql.cluster.v1.Envelope
+	6,  // 16: nosql.cluster.v1.MemberState.node:type_name -> nosql.cluster.v1.NodeInfo
+	0,  // 17: nosql.cluster.v1.MemberState.status:type_name -> nosql.cluster.v1.MemberStatus
+	20, // 18: nosql.cluster.v1.GossipRequest.sender:type_name -> nosql.cluster.v1.MemberState
+	20, // 19: nosql.cluster.v1.GossipRequest.membership:type_name -> nosql.cluster.v1.MemberState
+	5,  // 20: nosql.cluster.v1.GossipResponse.status:type_name -> nosql.cluster.v1.Status
+	20, // 21: nosql.cluster.v1.GossipResponse.membership:type_name -> nosql.cluster.v1.MemberState
+	20, // 22: nosql.cluster.v1.PingRequest.sender:type_name -> nosql.cluster.v1.MemberState
+	5,  // 23: nosql.cluster.v1.PingResponse.status:type_name -> nosql.cluster.v1.Status
+	20, // 24: nosql.cluster.v1.PingResponse.responder:type_name -> nosql.cluster.v1.MemberState
+	20, // 25: nosql.cluster.v1.IndirectPingRequest.sender:type_name -> nosql.cluster.v1.MemberState
+	6,  // 26: nosql.cluster.v1.IndirectPingRequest.target:type_name -> nosql.cluster.v1.NodeInfo
+	5,  // 27: nosql.cluster.v1.IndirectPingResponse.status:type_name -> nosql.cluster.v1.Status
+	20, // 28: nosql.cluster.v1.IndirectPingResponse.responder:type_name -> nosql.cluster.v1.MemberState
+	5,  // 29: nosql.cluster.v1.MerkleRootResponse.status:type_name -> nosql.cluster.v1.Status
+	4,  // 30: nosql.cluster.v1.RepairKeysRequest.rows:type_name -> nosql.cluster.v1.KeyEnvelope
+	5,  // 31: nosql.cluster.v1.SnapshotResponse.status:type_name -> nosql.cluster.v1.Status
+	32, // 32: nosql.cluster.v1.SnapshotResponse.files:type_name -> nosql.cluster.v1.SnapshotFile
+	3,  // 33: nosql.cluster.v1.WALEntry.envelope:type_name -> nosql.cluster.v1.Envelope
+	7,  // 34: nosql.cluster.v1.NodeService.Put:input_type -> nosql.cluster.v1.PutRequest
+	8,  // 35: nosql.cluster.v1.NodeService.Delete:input_type -> nosql.cluster.v1.DeleteRequest
+	10, // 36: nosql.cluster.v1.NodeService.Get:input_type -> nosql.cluster.v1.GetRequest
+	12, // 37: nosql.cluster.v1.NodeService.RangeScan:input_type -> nosql.cluster.v1.RangeScanRequest
+	14, // 38: nosql.cluster.v1.NodeService.Health:input_type -> nosql.cluster.v1.HealthRequest
+	16, // 39: nosql.cluster.v1.ReplicationService.ReplicatePut:input_type -> nosql.cluster.v1.ReplicatePutRequest
+	17, // 40: nosql.cluster.v1.ReplicationService.ReplicateDelete:input_type -> nosql.cluster.v1.ReplicateDeleteRequest
+	18, // 41: nosql.cluster.v1.ReplicationService.FetchVersion:input_type -> nosql.cluster.v1.FetchVersionRequest
+	21, // 42: nosql.cluster.v1.GossipService.Gossip:input_type -> nosql.cluster.v1.GossipRequest
+	23, // 43: nosql.cluster.v1.GossipService.Ping:input_type -> nosql.cluster.v1.PingRequest
+	25, // 44: nosql.cluster.v1.GossipService.IndirectPing:input_type -> nosql.cluster.v1.IndirectPingRequest
+	27, // 45: nosql.cluster.v1.AntiEntropyService.GetMerkleRoot:input_type -> nosql.cluster.v1.MerkleRootRequest
+	29, // 46: nosql.cluster.v1.AntiEntropyService.StreamRange:input_type -> nosql.cluster.v1.StreamRangeRequest
+	30, // 47: nosql.cluster.v1.AntiEntropyService.RepairKeys:input_type -> nosql.cluster.v1.RepairKeysRequest
+	31, // 48: nosql.cluster.v1.BootstrapService.GetSnapshot:input_type -> nosql.cluster.v1.SnapshotRequest
+	34, // 49: nosql.cluster.v1.BootstrapService.StreamWAL:input_type -> nosql.cluster.v1.WALStreamRequest
+	9,  // 50: nosql.cluster.v1.NodeService.Put:output_type -> nosql.cluster.v1.WriteResponse
+	9,  // 51: nosql.cluster.v1.NodeService.Delete:output_type -> nosql.cluster.v1.WriteResponse
+	11, // 52: nosql.cluster.v1.NodeService.Get:output_type -> nosql.cluster.v1.GetResponse
+	13, // 53: nosql.cluster.v1.NodeService.RangeScan:output_type -> nosql.cluster.v1.RangeScanResponse
+	15, // 54: nosql.cluster.v1.NodeService.Health:output_type -> nosql.cluster.v1.HealthResponse
+	9,  // 55: nosql.cluster.v1.ReplicationService.ReplicatePut:output_type -> nosql.cluster.v1.WriteResponse
+	9,  // 56: nosql.cluster.v1.ReplicationService.ReplicateDelete:output_type -> nosql.cluster.v1.WriteResponse
+	19, // 57: nosql.cluster.v1.ReplicationService.FetchVersion:output_type -> nosql.cluster.v1.FetchVersionResponse
+	22, // 58: nosql.cluster.v1.GossipService.Gossip:output_type -> nosql.cluster.v1.GossipResponse
+	24, // 59: nosql.cluster.v1.GossipService.Ping:output_type -> nosql.cluster.v1.PingResponse
+	26, // 60: nosql.cluster.v1.GossipService.IndirectPing:output_type -> nosql.cluster.v1.IndirectPingResponse
+	28, // 61: nosql.cluster.v1.AntiEntropyService.GetMerkleRoot:output_type -> nosql.cluster.v1.MerkleRootResponse
+	4,  // 62: nosql.cluster.v1.AntiEntropyService.StreamRange:output_type -> nosql.cluster.v1.KeyEnvelope
+	9,  // 63: nosql.cluster.v1.AntiEntropyService.RepairKeys:output_type -> nosql.cluster.v1.WriteResponse
+	33, // 64: nosql.cluster.v1.BootstrapService.GetSnapshot:output_type -> nosql.cluster.v1.SnapshotResponse
+	35, // 65: nosql.cluster.v1.BootstrapService.StreamWAL:output_type -> nosql.cluster.v1.WALEntry
+	50, // [50:66] is the sub-list for method output_type
+	34, // [34:50] is the sub-list for method input_type
+	34, // [34:34] is the sub-list for extension type_name
+	34, // [34:34] is the sub-list for extension extendee
+	0,  // [0:34] is the sub-list for field type_name
 }
 
 func init() { file_cluster_v1_cluster_proto_init() }
@@ -2021,13 +2295,14 @@ func file_cluster_v1_cluster_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_cluster_v1_cluster_proto_rawDesc), len(file_cluster_v1_cluster_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   32,
+			NumEnums:      1,
+			NumMessages:   35,
 			NumExtensions: 0,
 			NumServices:   5,
 		},
 		GoTypes:           file_cluster_v1_cluster_proto_goTypes,
 		DependencyIndexes: file_cluster_v1_cluster_proto_depIdxs,
+		EnumInfos:         file_cluster_v1_cluster_proto_enumTypes,
 		MessageInfos:      file_cluster_v1_cluster_proto_msgTypes,
 	}.Build()
 	File_cluster_v1_cluster_proto = out.File

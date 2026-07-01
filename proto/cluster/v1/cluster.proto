@@ -103,25 +103,51 @@ message FetchVersionResponse {
   Envelope envelope = 3;
 }
 
+enum MemberStatus {
+  MEMBER_STATUS_UNKNOWN = 0;
+  MEMBER_STATUS_ALIVE = 1;
+  MEMBER_STATUS_SUSPECT = 2;
+  MEMBER_STATUS_DEAD = 3;
+}
+
+message MemberState {
+  NodeInfo node = 1;
+  MemberStatus status = 2;
+  uint64 incarnation = 3;
+  int64 last_seen_unix_nano = 4;
+  uint64 membership_epoch = 5;
+  uint64 range_map_epoch = 6;
+}
+
 message GossipRequest {
-  NodeInfo sender = 1;
-  repeated NodeInfo known_nodes = 2;
-  uint64 membership_epoch = 3;
+  MemberState sender = 1;
+  repeated MemberState membership = 2;
 }
 
 message GossipResponse {
   Status status = 1;
-  repeated NodeInfo known_nodes = 2;
-  uint64 membership_epoch = 3;
+  repeated MemberState membership = 2;
 }
 
 message PingRequest {
-  NodeInfo sender = 1;
+  MemberState sender = 1;
+  string target_node_id = 2;
 }
 
 message PingResponse {
   Status status = 1;
-  NodeInfo responder = 2;
+  MemberState responder = 2;
+}
+
+message IndirectPingRequest {
+  MemberState sender = 1;
+  NodeInfo target = 2;
+}
+
+message IndirectPingResponse {
+  Status status = 1;
+  bool target_acknowledged = 2;
+  MemberState responder = 3;
 }
 
 message MerkleRootRequest {
@@ -189,6 +215,7 @@ service ReplicationService {
 service GossipService {
   rpc Gossip(GossipRequest) returns (GossipResponse);
   rpc Ping(PingRequest) returns (PingResponse);
+  rpc IndirectPing(IndirectPingRequest) returns (IndirectPingResponse);
 }
 
 service AntiEntropyService {

@@ -16,6 +16,15 @@ func TestDefaultConfigValidates(t *testing.T) {
 	if cfg.ReplicationFactor != 3 || cfg.ReadQuorum != 2 || cfg.WriteQuorum != 2 {
 		t.Fatalf("unexpected default quorum config: %+v", cfg)
 	}
+	if cfg.GossipInterval != time.Second || cfg.PingTimeout != 500*time.Millisecond {
+		t.Fatalf("unexpected default gossip timings: %+v", cfg)
+	}
+	if cfg.SuspectTimeout != 5*time.Second || cfg.DeadTimeout != 30*time.Second {
+		t.Fatalf("unexpected default failure detector timings: %+v", cfg)
+	}
+	if cfg.IndirectPingFanout != 3 {
+		t.Fatalf("unexpected default indirect ping fanout: %+v", cfg)
+	}
 }
 
 func TestLoadAppliesJSONFile(t *testing.T) {
@@ -31,7 +40,12 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 		"write_quorum": 2,
 		"tablet_split_bytes": 1048576,
 		"tablet_merge_bytes": 262144,
-		"anti_entropy_interval": "30s"
+		"anti_entropy_interval": "30s",
+		"gossip_interval": "2s",
+		"ping_timeout": "250ms",
+		"suspect_timeout": "10s",
+		"dead_timeout": "60s",
+		"indirect_ping_fanout": 5
 	}`)
 
 	cfg, err := Load(path)
@@ -50,6 +64,21 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 	if cfg.AntiEntropyInterval != 30*time.Second {
 		t.Fatalf("anti entropy interval = %v", cfg.AntiEntropyInterval)
 	}
+	if cfg.GossipInterval != 2*time.Second {
+		t.Fatalf("gossip interval = %v", cfg.GossipInterval)
+	}
+	if cfg.PingTimeout != 250*time.Millisecond {
+		t.Fatalf("ping timeout = %v", cfg.PingTimeout)
+	}
+	if cfg.SuspectTimeout != 10*time.Second {
+		t.Fatalf("suspect timeout = %v", cfg.SuspectTimeout)
+	}
+	if cfg.DeadTimeout != 60*time.Second {
+		t.Fatalf("dead timeout = %v", cfg.DeadTimeout)
+	}
+	if cfg.IndirectPingFanout != 5 {
+		t.Fatalf("indirect ping fanout = %v", cfg.IndirectPingFanout)
+	}
 }
 
 func TestLoadEnvOverridesFile(t *testing.T) {
@@ -66,6 +95,11 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	t.Setenv("NOSQL_CLUSTER_NODE_ID", "env-node")
 	t.Setenv("NOSQL_CLUSTER_SEEDS", "10.0.0.1:7100, 10.0.0.2:7100,,")
 	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_INTERVAL", "45s")
+	t.Setenv("NOSQL_CLUSTER_GOSSIP_INTERVAL", "3s")
+	t.Setenv("NOSQL_CLUSTER_PING_TIMEOUT", "750ms")
+	t.Setenv("NOSQL_CLUSTER_SUSPECT_TIMEOUT", "15s")
+	t.Setenv("NOSQL_CLUSTER_DEAD_TIMEOUT", "90s")
+	t.Setenv("NOSQL_CLUSTER_INDIRECT_PING_FANOUT", "7")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -79,6 +113,21 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}
 	if cfg.AntiEntropyInterval != 45*time.Second {
 		t.Fatalf("anti entropy interval = %v", cfg.AntiEntropyInterval)
+	}
+	if cfg.GossipInterval != 3*time.Second {
+		t.Fatalf("gossip interval = %v", cfg.GossipInterval)
+	}
+	if cfg.PingTimeout != 750*time.Millisecond {
+		t.Fatalf("ping timeout = %v", cfg.PingTimeout)
+	}
+	if cfg.SuspectTimeout != 15*time.Second {
+		t.Fatalf("suspect timeout = %v", cfg.SuspectTimeout)
+	}
+	if cfg.DeadTimeout != 90*time.Second {
+		t.Fatalf("dead timeout = %v", cfg.DeadTimeout)
+	}
+	if cfg.IndirectPingFanout != 7 {
+		t.Fatalf("indirect ping fanout = %v", cfg.IndirectPingFanout)
 	}
 }
 
@@ -101,6 +150,38 @@ func TestValidateRejectsBadTabletThresholds(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "tablet_split_bytes") {
 		t.Fatalf("expected tablet threshold error, got %v", err)
+	}
+}
+
+func TestValidateRejectsSuspectTimeoutBelowPingTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.PingTimeout = 5 * time.Second
+	cfg.SuspectTimeout = 5 * time.Second
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "suspect_timeout") {
+		t.Fatalf("expected suspect_timeout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsDeadTimeoutBelowSuspectTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.SuspectTimeout = 10 * time.Second
+	cfg.DeadTimeout = 10 * time.Second
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "dead_timeout") {
+		t.Fatalf("expected dead_timeout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNegativeIndirectPingFanout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.IndirectPingFanout = -1
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "indirect_ping_fanout") {
+		t.Fatalf("expected indirect_ping_fanout error, got %v", err)
 	}
 }
 

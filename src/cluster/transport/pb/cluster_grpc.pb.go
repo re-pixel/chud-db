@@ -451,8 +451,9 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	GossipService_Gossip_FullMethodName = "/nosql.cluster.v1.GossipService/Gossip"
-	GossipService_Ping_FullMethodName   = "/nosql.cluster.v1.GossipService/Ping"
+	GossipService_Gossip_FullMethodName       = "/nosql.cluster.v1.GossipService/Gossip"
+	GossipService_Ping_FullMethodName         = "/nosql.cluster.v1.GossipService/Ping"
+	GossipService_IndirectPing_FullMethodName = "/nosql.cluster.v1.GossipService/IndirectPing"
 )
 
 // GossipServiceClient is the client API for GossipService service.
@@ -461,6 +462,7 @@ const (
 type GossipServiceClient interface {
 	Gossip(ctx context.Context, in *GossipRequest, opts ...grpc.CallOption) (*GossipResponse, error)
 	Ping(ctx context.Context, in *PingRequest, opts ...grpc.CallOption) (*PingResponse, error)
+	IndirectPing(ctx context.Context, in *IndirectPingRequest, opts ...grpc.CallOption) (*IndirectPingResponse, error)
 }
 
 type gossipServiceClient struct {
@@ -491,12 +493,23 @@ func (c *gossipServiceClient) Ping(ctx context.Context, in *PingRequest, opts ..
 	return out, nil
 }
 
+func (c *gossipServiceClient) IndirectPing(ctx context.Context, in *IndirectPingRequest, opts ...grpc.CallOption) (*IndirectPingResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(IndirectPingResponse)
+	err := c.cc.Invoke(ctx, GossipService_IndirectPing_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GossipServiceServer is the server API for GossipService service.
 // All implementations must embed UnimplementedGossipServiceServer
 // for forward compatibility.
 type GossipServiceServer interface {
 	Gossip(context.Context, *GossipRequest) (*GossipResponse, error)
 	Ping(context.Context, *PingRequest) (*PingResponse, error)
+	IndirectPing(context.Context, *IndirectPingRequest) (*IndirectPingResponse, error)
 	mustEmbedUnimplementedGossipServiceServer()
 }
 
@@ -512,6 +525,9 @@ func (UnimplementedGossipServiceServer) Gossip(context.Context, *GossipRequest) 
 }
 func (UnimplementedGossipServiceServer) Ping(context.Context, *PingRequest) (*PingResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Ping not implemented")
+}
+func (UnimplementedGossipServiceServer) IndirectPing(context.Context, *IndirectPingRequest) (*IndirectPingResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method IndirectPing not implemented")
 }
 func (UnimplementedGossipServiceServer) mustEmbedUnimplementedGossipServiceServer() {}
 func (UnimplementedGossipServiceServer) testEmbeddedByValue()                       {}
@@ -570,6 +586,24 @@ func _GossipService_Ping_Handler(srv interface{}, ctx context.Context, dec func(
 	return interceptor(ctx, in, info, handler)
 }
 
+func _GossipService_IndirectPing_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(IndirectPingRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GossipServiceServer).IndirectPing(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: GossipService_IndirectPing_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GossipServiceServer).IndirectPing(ctx, req.(*IndirectPingRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // GossipService_ServiceDesc is the grpc.ServiceDesc for GossipService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -584,6 +618,10 @@ var GossipService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Ping",
 			Handler:    _GossipService_Ping_Handler,
+		},
+		{
+			MethodName: "IndirectPing",
+			Handler:    _GossipService_IndirectPing_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

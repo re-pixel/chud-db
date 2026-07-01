@@ -24,6 +24,11 @@ type Config struct {
 	TabletSplitBytes    int64         `json:"tablet_split_bytes"`
 	TabletMergeBytes    int64         `json:"tablet_merge_bytes"`
 	AntiEntropyInterval time.Duration `json:"-"`
+	GossipInterval      time.Duration `json:"-"`
+	PingTimeout         time.Duration `json:"-"`
+	SuspectTimeout      time.Duration `json:"-"`
+	DeadTimeout         time.Duration `json:"-"`
+	IndirectPingFanout  int           `json:"indirect_ping_fanout"`
 }
 
 type fileConfig struct {
@@ -39,6 +44,11 @@ type fileConfig struct {
 	TabletSplitBytes    *int64   `json:"tablet_split_bytes"`
 	TabletMergeBytes    *int64   `json:"tablet_merge_bytes"`
 	AntiEntropyInterval *string  `json:"anti_entropy_interval"`
+	GossipInterval      *string  `json:"gossip_interval"`
+	PingTimeout         *string  `json:"ping_timeout"`
+	SuspectTimeout      *string  `json:"suspect_timeout"`
+	DeadTimeout         *string  `json:"dead_timeout"`
+	IndirectPingFanout  *int     `json:"indirect_ping_fanout"`
 }
 
 func DefaultConfig() Config {
@@ -55,6 +65,11 @@ func DefaultConfig() Config {
 		TabletSplitBytes:    256 << 20,
 		TabletMergeBytes:    64 << 20,
 		AntiEntropyInterval: time.Minute,
+		GossipInterval:      time.Second,
+		PingTimeout:         500 * time.Millisecond,
+		SuspectTimeout:      5 * time.Second,
+		DeadTimeout:         30 * time.Second,
+		IndirectPingFanout:  3,
 	}
 }
 
@@ -114,6 +129,21 @@ func (cfg Config) Validate() error {
 	if cfg.AntiEntropyInterval <= 0 {
 		return fmt.Errorf("anti_entropy_interval must be > 0")
 	}
+	if cfg.GossipInterval <= 0 {
+		return fmt.Errorf("gossip_interval must be > 0")
+	}
+	if cfg.PingTimeout <= 0 {
+		return fmt.Errorf("ping_timeout must be > 0")
+	}
+	if cfg.SuspectTimeout <= cfg.PingTimeout {
+		return fmt.Errorf("suspect_timeout must be greater than ping_timeout")
+	}
+	if cfg.DeadTimeout <= cfg.SuspectTimeout {
+		return fmt.Errorf("dead_timeout must be greater than suspect_timeout")
+	}
+	if cfg.IndirectPingFanout < 0 {
+		return fmt.Errorf("indirect_ping_fanout must be >= 0")
+	}
 	return nil
 }
 
@@ -162,6 +192,37 @@ func applyFileConfig(cfg *Config, data []byte) error {
 			return fmt.Errorf("parse anti_entropy_interval: %w", err)
 		}
 		cfg.AntiEntropyInterval = d
+	}
+	if fc.GossipInterval != nil {
+		d, err := time.ParseDuration(*fc.GossipInterval)
+		if err != nil {
+			return fmt.Errorf("parse gossip_interval: %w", err)
+		}
+		cfg.GossipInterval = d
+	}
+	if fc.PingTimeout != nil {
+		d, err := time.ParseDuration(*fc.PingTimeout)
+		if err != nil {
+			return fmt.Errorf("parse ping_timeout: %w", err)
+		}
+		cfg.PingTimeout = d
+	}
+	if fc.SuspectTimeout != nil {
+		d, err := time.ParseDuration(*fc.SuspectTimeout)
+		if err != nil {
+			return fmt.Errorf("parse suspect_timeout: %w", err)
+		}
+		cfg.SuspectTimeout = d
+	}
+	if fc.DeadTimeout != nil {
+		d, err := time.ParseDuration(*fc.DeadTimeout)
+		if err != nil {
+			return fmt.Errorf("parse dead_timeout: %w", err)
+		}
+		cfg.DeadTimeout = d
+	}
+	if fc.IndirectPingFanout != nil {
+		cfg.IndirectPingFanout = *fc.IndirectPingFanout
 	}
 	return nil
 }
@@ -226,6 +287,41 @@ func applyEnv(cfg *Config) error {
 			return fmt.Errorf("parse %sANTI_ENTROPY_INTERVAL: %w", envPrefix, err)
 		}
 		cfg.AntiEntropyInterval = d
+	}
+	if v, ok := getenv("GOSSIP_INTERVAL"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sGOSSIP_INTERVAL: %w", envPrefix, err)
+		}
+		cfg.GossipInterval = d
+	}
+	if v, ok := getenv("PING_TIMEOUT"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sPING_TIMEOUT: %w", envPrefix, err)
+		}
+		cfg.PingTimeout = d
+	}
+	if v, ok := getenv("SUSPECT_TIMEOUT"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sSUSPECT_TIMEOUT: %w", envPrefix, err)
+		}
+		cfg.SuspectTimeout = d
+	}
+	if v, ok := getenv("DEAD_TIMEOUT"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sDEAD_TIMEOUT: %w", envPrefix, err)
+		}
+		cfg.DeadTimeout = d
+	}
+	if v, ok := getenv("INDIRECT_PING_FANOUT"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("parse %sINDIRECT_PING_FANOUT: %w", envPrefix, err)
+		}
+		cfg.IndirectPingFanout = n
 	}
 	return nil
 }
