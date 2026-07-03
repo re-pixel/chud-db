@@ -132,6 +132,69 @@ func TestGossiperEscalatesSuspectToDeadAfterTimeout(t *testing.T) {
 	}
 }
 
+func TestGossiperProbeSeedsContactsUnknownSeedsAndUpserts(t *testing.T) {
+	table := NewTable("test-cluster", Member{NodeID: "local", AdvertiseAddr: "127.0.0.1:7000"})
+
+	client := newFakeGossipClient()
+	client.pingResults["10.0.0.5:7000"] = pingResult{
+		member: Member{NodeID: "seed-node", AdvertiseAddr: "10.0.0.5:7000", Status: StatusAlive, Incarnation: 1},
+	}
+
+	cfg := testGossiperConfig()
+	cfg.Seeds = []string{"10.0.0.5:7000"}
+	g := NewGossiper(table, client, cfg)
+
+	g.probeSeeds(context.Background())
+
+	m, ok := table.Get("seed-node")
+	if !ok {
+		t.Fatalf("expected seed to be discovered and added to table")
+	}
+	if m.AdvertiseAddr != "10.0.0.5:7000" {
+		t.Fatalf("seed-node = %+v", m)
+	}
+	if len(client.pingCallsSnapshot()) != 1 {
+		t.Fatalf("expected exactly one ping call, got %v", client.pingCallsSnapshot())
+	}
+}
+
+func TestGossiperProbeSeedsSkipsAlreadyKnownAddresses(t *testing.T) {
+	table := NewTable("test-cluster", Member{NodeID: "local", AdvertiseAddr: "127.0.0.1:7000"})
+	table.Merge(Member{NodeID: "seed-node", AdvertiseAddr: "10.0.0.5:7000", Status: StatusAlive})
+
+	client := newFakeGossipClient()
+	cfg := testGossiperConfig()
+	cfg.Seeds = []string{"10.0.0.5:7000"}
+	g := NewGossiper(table, client, cfg)
+
+	g.probeSeeds(context.Background())
+
+	if len(client.pingCallsSnapshot()) != 0 {
+		t.Fatalf("expected no ping calls for already-known seed address, got %v", client.pingCallsSnapshot())
+	}
+}
+
+func TestGossiperProbeSeedsRetriesOnFailure(t *testing.T) {
+	table := NewTable("test-cluster", Member{NodeID: "local", AdvertiseAddr: "127.0.0.1:7000"})
+
+	client := newFakeGossipClient()
+	client.pingResults["10.0.0.5:7000"] = pingResult{err: errors.New("unreachable")}
+
+	cfg := testGossiperConfig()
+	cfg.Seeds = []string{"10.0.0.5:7000"}
+	g := NewGossiper(table, client, cfg)
+
+	g.probeSeeds(context.Background())
+	g.probeSeeds(context.Background())
+
+	if len(client.pingCallsSnapshot()) != 2 {
+		t.Fatalf("expected seed to be retried on every call while unresolved, got %v", client.pingCallsSnapshot())
+	}
+	if len(table.Snapshot()) != 1 { // only local
+		t.Fatalf("expected no member added for a seed that never responds, got %+v", table.Snapshot())
+	}
+}
+
 func TestGossiperPeersExcludesLocalAndDead(t *testing.T) {
 	table := NewTable("test-cluster", Member{NodeID: "local"})
 	table.Merge(Member{NodeID: "alive-1", Status: StatusAlive})

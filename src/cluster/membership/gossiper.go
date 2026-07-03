@@ -16,6 +16,13 @@ type GossiperConfig struct {
 	SuspectTimeout     time.Duration
 	DeadTimeout        time.Duration
 	IndirectPingFanout int
+
+	// Seeds are bootstrap peer addresses from static config. Their
+	// NodeID is not known in advance, so they are not added to the
+	// Table as members; instead the gossiper keeps attempting direct
+	// contact until each one responds, at which point its real,
+	// self-reported Member state is merged in like any other peer.
+	Seeds []string
 }
 
 // Gossiper periodically probes a random peer for liveness (with
@@ -83,8 +90,52 @@ func (g *Gossiper) run(ctx context.Context) {
 }
 
 func (g *Gossiper) tick(ctx context.Context) {
+	g.probeSeeds(ctx)
 	g.probeRandomPeer(ctx)
 	g.gossipRandomPeer(ctx)
+}
+
+// probeSeeds attempts direct contact with any configured seed address
+// that isn't already known as a table member (matched by AdvertiseAddr,
+// since a seed's NodeID is unknown until it responds). A successful
+// contact's self-reported state is upserted into the table, after which
+// normal peer selection takes over for that node; unresolved seeds are
+// retried on every subsequent tick.
+func (g *Gossiper) probeSeeds(ctx context.Context) {
+	pending := g.pendingSeeds()
+	if len(pending) == 0 {
+		return
+	}
+
+	local := g.table.Local()
+	for _, addr := range pending {
+		pingCtx, cancel := context.WithTimeout(ctx, g.cfg.PingTimeout)
+		responder, err := g.client.Ping(pingCtx, addr, "", local)
+		cancel()
+		if err != nil {
+			continue
+		}
+		g.table.Upsert(responder)
+	}
+}
+
+func (g *Gossiper) pendingSeeds() []string {
+	if len(g.cfg.Seeds) == 0 {
+		return nil
+	}
+
+	known := make(map[string]struct{})
+	for _, m := range g.table.Snapshot() {
+		known[m.AdvertiseAddr] = struct{}{}
+	}
+
+	pending := make([]string, 0, len(g.cfg.Seeds))
+	for _, addr := range g.cfg.Seeds {
+		if _, ok := known[addr]; !ok {
+			pending = append(pending, addr)
+		}
+	}
+	return pending
 }
 
 // probeRandomPeer runs one round of SWIM failure detection: direct
