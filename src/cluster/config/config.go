@@ -29,6 +29,8 @@ type Config struct {
 	SuspectTimeout      time.Duration `json:"-"`
 	DeadTimeout         time.Duration `json:"-"`
 	IndirectPingFanout  int           `json:"indirect_ping_fanout"`
+	RangeMapGeneration  uint64        `json:"range_map_generation"`
+	RangeMapReplicas    []string      `json:"range_map_replicas"`
 }
 
 type fileConfig struct {
@@ -49,6 +51,8 @@ type fileConfig struct {
 	SuspectTimeout      *string  `json:"suspect_timeout"`
 	DeadTimeout         *string  `json:"dead_timeout"`
 	IndirectPingFanout  *int     `json:"indirect_ping_fanout"`
+	RangeMapGeneration  *uint64  `json:"range_map_generation"`
+	RangeMapReplicas    []string `json:"range_map_replicas"`
 }
 
 func DefaultConfig() Config {
@@ -70,6 +74,7 @@ func DefaultConfig() Config {
 		SuspectTimeout:      5 * time.Second,
 		DeadTimeout:         30 * time.Second,
 		IndirectPingFanout:  3,
+		RangeMapGeneration:  1,
 	}
 }
 
@@ -88,6 +93,9 @@ func Load(path string) (Config, error) {
 
 	if err := applyEnv(&cfg); err != nil {
 		return Config{}, err
+	}
+	if len(cfg.RangeMapReplicas) == 0 {
+		cfg.RangeMapReplicas = []string{cfg.NodeID}
 	}
 	if err := cfg.Validate(); err != nil {
 		return Config{}, err
@@ -143,6 +151,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.IndirectPingFanout < 0 {
 		return fmt.Errorf("indirect_ping_fanout must be >= 0")
+	}
+	if cfg.RangeMapGeneration < 1 {
+		return fmt.Errorf("range_map_generation must be >= 1")
 	}
 	return nil
 }
@@ -223,6 +234,12 @@ func applyFileConfig(cfg *Config, data []byte) error {
 	}
 	if fc.IndirectPingFanout != nil {
 		cfg.IndirectPingFanout = *fc.IndirectPingFanout
+	}
+	if fc.RangeMapGeneration != nil {
+		cfg.RangeMapGeneration = *fc.RangeMapGeneration
+	}
+	if fc.RangeMapReplicas != nil {
+		cfg.RangeMapReplicas = append([]string(nil), fc.RangeMapReplicas...)
 	}
 	return nil
 }
@@ -322,6 +339,16 @@ func applyEnv(cfg *Config) error {
 			return fmt.Errorf("parse %sINDIRECT_PING_FANOUT: %w", envPrefix, err)
 		}
 		cfg.IndirectPingFanout = n
+	}
+	if v, ok := getenv("RANGE_MAP_GENERATION"); ok {
+		n, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return fmt.Errorf("parse %sRANGE_MAP_GENERATION: %w", envPrefix, err)
+		}
+		cfg.RangeMapGeneration = n
+	}
+	if v, ok := getenv("RANGE_MAP_REPLICAS"); ok {
+		cfg.RangeMapReplicas = splitCSV(v)
 	}
 	return nil
 }

@@ -25,6 +25,33 @@ func TestDefaultConfigValidates(t *testing.T) {
 	if cfg.IndirectPingFanout != 3 {
 		t.Fatalf("unexpected default indirect ping fanout: %+v", cfg)
 	}
+	if cfg.RangeMapGeneration != 1 {
+		t.Fatalf("unexpected default range map generation: %+v", cfg)
+	}
+	if cfg.RangeMapReplicas != nil {
+		t.Fatalf("expected unresolved range map replicas by default, got %#v", cfg.RangeMapReplicas)
+	}
+}
+
+func TestLoadDefaultsRangeMapReplicasToSelf(t *testing.T) {
+	path := writeConfig(t, `{
+		"node_id": "node-2",
+		"listen_addr": "0.0.0.0:7100",
+		"advertise_addr": "10.0.0.2:7100",
+		"replication_factor": 3,
+		"read_quorum": 2,
+		"write_quorum": 2,
+		"tablet_split_bytes": 1048576,
+		"tablet_merge_bytes": 262144
+	}`)
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.RangeMapReplicas) != 1 || cfg.RangeMapReplicas[0] != "node-2" {
+		t.Fatalf("expected range map replicas to default to [node-2], got %#v", cfg.RangeMapReplicas)
+	}
 }
 
 func TestLoadAppliesJSONFile(t *testing.T) {
@@ -45,7 +72,9 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 		"ping_timeout": "250ms",
 		"suspect_timeout": "10s",
 		"dead_timeout": "60s",
-		"indirect_ping_fanout": 5
+		"indirect_ping_fanout": 5,
+		"range_map_generation": 4,
+		"range_map_replicas": ["node-1", "node-2", "node-3"]
 	}`)
 
 	cfg, err := Load(path)
@@ -79,6 +108,12 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 	if cfg.IndirectPingFanout != 5 {
 		t.Fatalf("indirect ping fanout = %v", cfg.IndirectPingFanout)
 	}
+	if cfg.RangeMapGeneration != 4 {
+		t.Fatalf("range map generation = %v", cfg.RangeMapGeneration)
+	}
+	if len(cfg.RangeMapReplicas) != 3 || cfg.RangeMapReplicas[1] != "node-2" {
+		t.Fatalf("range map replicas = %#v", cfg.RangeMapReplicas)
+	}
 }
 
 func TestLoadEnvOverridesFile(t *testing.T) {
@@ -100,6 +135,8 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	t.Setenv("NOSQL_CLUSTER_SUSPECT_TIMEOUT", "15s")
 	t.Setenv("NOSQL_CLUSTER_DEAD_TIMEOUT", "90s")
 	t.Setenv("NOSQL_CLUSTER_INDIRECT_PING_FANOUT", "7")
+	t.Setenv("NOSQL_CLUSTER_RANGE_MAP_GENERATION", "9")
+	t.Setenv("NOSQL_CLUSTER_RANGE_MAP_REPLICAS", "node-1, node-2,,")
 
 	cfg, err := Load(path)
 	if err != nil {
@@ -128,6 +165,12 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}
 	if cfg.IndirectPingFanout != 7 {
 		t.Fatalf("indirect ping fanout = %v", cfg.IndirectPingFanout)
+	}
+	if cfg.RangeMapGeneration != 9 {
+		t.Fatalf("range map generation = %v", cfg.RangeMapGeneration)
+	}
+	if len(cfg.RangeMapReplicas) != 2 || cfg.RangeMapReplicas[0] != "node-1" || cfg.RangeMapReplicas[1] != "node-2" {
+		t.Fatalf("range map replicas = %#v", cfg.RangeMapReplicas)
 	}
 }
 
@@ -182,6 +225,16 @@ func TestValidateRejectsNegativeIndirectPingFanout(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "indirect_ping_fanout") {
 		t.Fatalf("expected indirect_ping_fanout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsZeroRangeMapGeneration(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.RangeMapGeneration = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "range_map_generation") {
+		t.Fatalf("expected range_map_generation error, got %v", err)
 	}
 }
 
