@@ -629,6 +629,108 @@ var GossipService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
+	RangeMapService_GetRangeMap_FullMethodName = "/nosql.cluster.v1.RangeMapService/GetRangeMap"
+)
+
+// RangeMapServiceClient is the client API for RangeMapService service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type RangeMapServiceClient interface {
+	GetRangeMap(ctx context.Context, in *GetRangeMapRequest, opts ...grpc.CallOption) (*GetRangeMapResponse, error)
+}
+
+type rangeMapServiceClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewRangeMapServiceClient(cc grpc.ClientConnInterface) RangeMapServiceClient {
+	return &rangeMapServiceClient{cc}
+}
+
+func (c *rangeMapServiceClient) GetRangeMap(ctx context.Context, in *GetRangeMapRequest, opts ...grpc.CallOption) (*GetRangeMapResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetRangeMapResponse)
+	err := c.cc.Invoke(ctx, RangeMapService_GetRangeMap_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// RangeMapServiceServer is the server API for RangeMapService service.
+// All implementations must embed UnimplementedRangeMapServiceServer
+// for forward compatibility.
+type RangeMapServiceServer interface {
+	GetRangeMap(context.Context, *GetRangeMapRequest) (*GetRangeMapResponse, error)
+	mustEmbedUnimplementedRangeMapServiceServer()
+}
+
+// UnimplementedRangeMapServiceServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedRangeMapServiceServer struct{}
+
+func (UnimplementedRangeMapServiceServer) GetRangeMap(context.Context, *GetRangeMapRequest) (*GetRangeMapResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetRangeMap not implemented")
+}
+func (UnimplementedRangeMapServiceServer) mustEmbedUnimplementedRangeMapServiceServer() {}
+func (UnimplementedRangeMapServiceServer) testEmbeddedByValue()                         {}
+
+// UnsafeRangeMapServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to RangeMapServiceServer will
+// result in compilation errors.
+type UnsafeRangeMapServiceServer interface {
+	mustEmbedUnimplementedRangeMapServiceServer()
+}
+
+func RegisterRangeMapServiceServer(s grpc.ServiceRegistrar, srv RangeMapServiceServer) {
+	// If the following call panics, it indicates UnimplementedRangeMapServiceServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&RangeMapService_ServiceDesc, srv)
+}
+
+func _RangeMapService_GetRangeMap_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetRangeMapRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(RangeMapServiceServer).GetRangeMap(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: RangeMapService_GetRangeMap_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(RangeMapServiceServer).GetRangeMap(ctx, req.(*GetRangeMapRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// RangeMapService_ServiceDesc is the grpc.ServiceDesc for RangeMapService service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var RangeMapService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "nosql.cluster.v1.RangeMapService",
+	HandlerType: (*RangeMapServiceServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "GetRangeMap",
+			Handler:    _RangeMapService_GetRangeMap_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "cluster/v1/cluster.proto",
+}
+
+const (
 	AntiEntropyService_GetMerkleRoot_FullMethodName = "/nosql.cluster.v1.AntiEntropyService/GetMerkleRoot"
 	AntiEntropyService_StreamRange_FullMethodName   = "/nosql.cluster.v1.AntiEntropyService/StreamRange"
 	AntiEntropyService_RepairKeys_FullMethodName    = "/nosql.cluster.v1.AntiEntropyService/RepairKeys"

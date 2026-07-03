@@ -150,6 +150,24 @@ message IndirectPingResponse {
   MemberState responder = 3;
 }
 
+message RangeSpec {
+  string start = 1;
+  string end = 2;
+  repeated string replica_node_ids = 3;
+}
+
+message RangeMap {
+  uint64 generation = 1;
+  repeated RangeSpec ranges = 2;
+}
+
+message GetRangeMapRequest {}
+
+message GetRangeMapResponse {
+  Status status = 1;
+  RangeMap map = 2;
+}
+
 message MerkleRootRequest {
   string range_start = 1;
   string range_end = 2;
@@ -216,6 +234,10 @@ service GossipService {
   rpc Gossip(GossipRequest) returns (GossipResponse);
   rpc Ping(PingRequest) returns (PingResponse);
   rpc IndirectPing(IndirectPingRequest) returns (IndirectPingResponse);
+}
+
+service RangeMapService {
+  rpc GetRangeMap(GetRangeMapRequest) returns (GetRangeMapResponse);
 }
 
 service AntiEntropyService {
