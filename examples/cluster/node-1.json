@@ -1,0 +1,18 @@
+{
+  "node_id": "node-1",
+  "cluster_id": "nosql-cluster",
+  "data_dir": "data/cluster/node-1",
+  "listen_addr": "127.0.0.1:7001",
+  "advertise_addr": "127.0.0.1:7001",
+  "seeds": ["127.0.0.1:7002", "127.0.0.1:7003"],
+  "replication_factor": 3,
+  "read_quorum": 2,
+  "write_quorum": 2,
+  "tablet_split_bytes": 268435456,
+  "tablet_merge_bytes": 67108864,
+  "gossip_interval": "1s",
+  "ping_timeout": "500ms",
+  "suspect_timeout": "5s",
+  "dead_timeout": "30s",
+  "indirect_ping_fanout": 3
+}

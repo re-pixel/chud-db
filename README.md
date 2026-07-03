@@ -112,6 +112,32 @@ dropTombstones = isLastLevel &&
 
 ---
 
+## Cluster node (early distribution layer)
+
+`cmd/node` boots a single cluster node: the storage engine, a gRPC `NodeService` (read/write) and `GossipService` (SWIM membership) endpoint, and a background gossiper that discovers peers and detects failures.
+
+```bash
+go build -o bin/nosql-node ./cmd/node
+./bin/nosql-node -config examples/cluster/node-1.json
+```
+
+Config is loaded from the `-config` JSON file (see `examples/cluster/node-*.json`), then overridden by `NOSQL_CLUSTER_*` environment variables (e.g. `NOSQL_CLUSTER_NODE_ID`, `NOSQL_CLUSTER_SEEDS`).
+
+### Local 3-node smoke test
+
+`examples/cluster/node-{1,2,3}.json` configure three nodes on `127.0.0.1:7001-7003`, each seeded with the other two's addresses. Run each in its own terminal from the repo root:
+
+```bash
+go build -o bin/nosql-node ./cmd/node
+./bin/nosql-node -config examples/cluster/node-1.json
+./bin/nosql-node -config examples/cluster/node-2.json
+./bin/nosql-node -config examples/cluster/node-3.json
+```
+
+Within a couple of `gossip_interval` ticks each node's membership table converges to all three nodes marked `alive`. Membership is in-memory only (v1) — restart a node and it re-bootstraps from the seed list.
+
+---
+
 ## Benchmarks
 
 Machine: AMD Ryzen 7 7730U, WSL2 (Linux), `go test -bench=. -benchtime=5s`.  
