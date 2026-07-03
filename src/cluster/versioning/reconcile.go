@@ -22,8 +22,15 @@ func Reconcile(values []Envelope) ReconcileResult {
 			if i == j {
 				continue
 			}
-			if Compare(candidate.VectorClock, other.VectorClock) == Before {
+			switch Compare(candidate.VectorClock, other.VectorClock) {
+			case Before:
 				dominated = true
+			case Equal:
+				if j < i {
+					dominated = true
+				}
+			}
+			if dominated {
 				break
 			}
 		}

@@ -36,6 +36,38 @@ func TestReconcileReturnsConcurrentSiblings(t *testing.T) {
 	}
 }
 
+func TestReconcileDedupesEqualClockDuplicates(t *testing.T) {
+	value := NewPut(VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
+	duplicate := NewPut(VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
+
+	result := Reconcile([]Envelope{value, duplicate})
+
+	if result.Winner == nil {
+		t.Fatalf("expected winner, got siblings %#v", result.Siblings)
+	}
+	if len(result.Siblings) != 0 {
+		t.Fatalf("unexpected siblings: %#v", result.Siblings)
+	}
+	if result.Winner.Value != "value" {
+		t.Fatalf("winner value = %q", result.Winner.Value)
+	}
+}
+
+func TestReconcileDedupesEqualClockAmongConcurrentSiblings(t *testing.T) {
+	left := NewPut(VectorClock{"node-a": 1}, "left", time.Unix(0, 1))
+	leftDuplicate := NewPut(VectorClock{"node-a": 1}, "left", time.Unix(0, 1))
+	right := NewPut(VectorClock{"node-b": 1}, "right", time.Unix(0, 2))
+
+	result := Reconcile([]Envelope{left, leftDuplicate, right})
+
+	if result.Winner != nil {
+		t.Fatalf("unexpected winner: %#v", result.Winner)
+	}
+	if len(result.Siblings) != 2 {
+		t.Fatalf("siblings = %#v", result.Siblings)
+	}
+}
+
 func TestReconcileDeleteDominatesPut(t *testing.T) {
 	put := NewPut(VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
 	delete := NewDelete(VectorClock{"node-a": 2}, time.Unix(0, 2))
