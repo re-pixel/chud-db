@@ -136,6 +136,17 @@ go build -o bin/nosql-node ./cmd/node
 
 Within a couple of `gossip_interval` ticks each node's membership table converges to all three nodes marked `alive`. Membership is in-memory only (v1) — restart a node and it re-bootstraps from the seed list.
 
+The three example configs also carry a static, matching range map
+(`range_map_generation: 1`, `range_map_replicas: ["node-1", "node-2"]`)
+so the same smoke test cluster can be used to check range ownership:
+querying `RangeMapService.GetRangeMap` on any of the three nodes returns
+the identical single global range `["", "") -> [node-1, node-2]`, and
+`node-3` — deliberately left out of the replica list — rejects
+`NodeService.Put`/`Get`/`RangeScan` with `FailedPrecondition`, while
+`node-1`/`node-2` serve them normally. Range map propagation in Phase 3
+is config-driven only (no live mutation yet), so all three files must
+list the same generation/replicas for the map to actually agree.
+
 ---
 
 ## Benchmarks
