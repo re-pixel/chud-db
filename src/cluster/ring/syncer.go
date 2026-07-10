@@ -23,6 +23,19 @@ type PeerEpochSource interface {
 	PeerEpochs() []PeerEpoch
 }
 
+// LocalEpochPublisher lets Syncer advertise the local node's current
+// range map generation (e.g. over membership gossip) immediately after
+// a pull changes it, rather than leaving other nodes to notice only
+// once something else happens to touch local membership state.
+type LocalEpochPublisher interface {
+	PublishRangeMapEpoch(epoch uint64)
+}
+
+// LocalEpochPublisherFunc adapts a plain function to LocalEpochPublisher.
+type LocalEpochPublisherFunc func(epoch uint64)
+
+func (f LocalEpochPublisherFunc) PublishRangeMapEpoch(epoch uint64) { f(epoch) }
+
 // SyncerConfig carries the timing knobs the syncer loop needs.
 type SyncerConfig struct {
 	Interval    time.Duration
@@ -37,23 +50,28 @@ type SyncerConfig struct {
 // gossip for free, so Syncer only pays for a full-map RPC when there is
 // concrete evidence it is actually behind.
 type Syncer struct {
-	table  *Table
-	client RangeMapClient
-	peers  PeerEpochSource
-	cfg    SyncerConfig
+	table     *Table
+	client    RangeMapClient
+	peers     PeerEpochSource
+	publisher LocalEpochPublisher
+	cfg       SyncerConfig
 
 	stopOnce sync.Once
 	stopCh   chan struct{}
 	wg       sync.WaitGroup
 }
 
-func NewSyncer(table *Table, client RangeMapClient, peers PeerEpochSource, cfg SyncerConfig) *Syncer {
+// NewSyncer builds a Syncer. publisher may be nil, in which case a
+// successful pull updates the local Table but nothing announces the new
+// generation to peers (only useful in tests or single-node setups).
+func NewSyncer(table *Table, client RangeMapClient, peers PeerEpochSource, publisher LocalEpochPublisher, cfg SyncerConfig) *Syncer {
 	return &Syncer{
-		table:  table,
-		client: client,
-		peers:  peers,
-		cfg:    cfg,
-		stopCh: make(chan struct{}),
+		table:     table,
+		client:    client,
+		peers:     peers,
+		publisher: publisher,
+		cfg:       cfg,
+		stopCh:    make(chan struct{}),
 	}
 }
 
@@ -108,8 +126,12 @@ func (s *Syncer) tick(ctx context.Context) {
 		if err != nil {
 			continue
 		}
-		if changed, err := s.table.Replace(fetched); err != nil || !changed {
+		changed, err := s.table.Replace(fetched)
+		if err != nil || !changed {
 			continue
+		}
+		if s.publisher != nil {
+			s.publisher.PublishRangeMapEpoch(fetched.Generation)
 		}
 		return
 	}

@@ -13,6 +13,7 @@ import (
 	clusterconfig "nosqlEngine/src/cluster/config"
 	clustermembership "nosqlEngine/src/cluster/membership"
 	clusternode "nosqlEngine/src/cluster/node"
+	clusterring "nosqlEngine/src/cluster/ring"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/engine"
 
@@ -56,6 +57,7 @@ func run() error {
 	table := clustermembership.NewTable(cfg.ClusterID, clustermembership.Member{
 		NodeID:        cfg.NodeID,
 		AdvertiseAddr: cfg.AdvertiseAddr,
+		RangeMapEpoch: cfg.RangeMapGeneration,
 	})
 	gossipServer := clustermembership.NewServer(table, membershipClient, cfg.PingTimeout)
 	gossiper := clustermembership.NewGossiper(table, membershipClient, clustermembership.GossiperConfig{
@@ -67,9 +69,30 @@ func run() error {
 		Seeds:              cfg.Seeds,
 	})
 
+	ringTable, err := clusterring.NewTable(cfg.NodeID, clusterring.RangeMap{
+		Generation: cfg.RangeMapGeneration,
+		Ranges:     []clusterring.Range{{Start: "", End: "", Replicas: cfg.RangeMapReplicas}},
+	})
+	if err != nil {
+		return fmt.Errorf("build initial range map: %w", err)
+	}
+	ringServer := clusterring.NewServer(ringTable)
+
+	ringClient := clusterring.NewClient()
+	defer ringClient.Close() //nolint:errcheck
+
+	syncer := clusterring.NewSyncer(
+		ringTable,
+		ringClient,
+		membershipPeerEpochs{table},
+		clusterring.LocalEpochPublisherFunc(func(epoch uint64) { table.SetLocalRangeMapEpoch(epoch) }),
+		clusterring.SyncerConfig{Interval: cfg.GossipInterval, PullTimeout: cfg.PingTimeout},
+	)
+
 	grpcServer := grpc.NewServer()
 	pb.RegisterNodeServiceServer(grpcServer, nodeServer)
 	pb.RegisterGossipServiceServer(grpcServer, gossipServer)
+	pb.RegisterRangeMapServiceServer(grpcServer, ringServer)
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -80,6 +103,7 @@ func run() error {
 
 	gossipCtx, stopGossip := context.WithCancel(context.Background())
 	gossiper.Start(gossipCtx)
+	syncer.Start(gossipCtx)
 
 	fmt.Printf("node %s listening on %s (advertise %s)\n", cfg.NodeID, cfg.ListenAddr, cfg.AdvertiseAddr)
 
@@ -92,13 +116,40 @@ func run() error {
 		fmt.Printf("node %s shutting down after %s\n", cfg.NodeID, sig)
 		stopGossip()
 		gossiper.Stop()
+		syncer.Stop()
 		shutdownGRPC(grpcServer)
 		return nil
 	case err := <-serveErr:
 		stopGossip()
 		gossiper.Stop()
+		syncer.Stop()
 		return fmt.Errorf("serve grpc: %w", err)
 	}
+}
+
+// membershipPeerEpochs adapts a membership.Table into the
+// clusterring.PeerEpochSource the range map Syncer needs, without
+// making the ring package depend on membership.
+type membershipPeerEpochs struct {
+	table *clustermembership.Table
+}
+
+func (m membershipPeerEpochs) PeerEpochs() []clusterring.PeerEpoch {
+	snapshot := m.table.Snapshot()
+	localID := m.table.LocalID()
+
+	peers := make([]clusterring.PeerEpoch, 0, len(snapshot))
+	for _, member := range snapshot {
+		if member.NodeID == localID || member.Status == clustermembership.StatusDead {
+			continue
+		}
+		peers = append(peers, clusterring.PeerEpoch{
+			NodeID:        member.NodeID,
+			AdvertiseAddr: member.AdvertiseAddr,
+			RangeMapEpoch: member.RangeMapEpoch,
+		})
+	}
+	return peers
 }
 
 func shutdownGRPC(server *grpc.Server) {

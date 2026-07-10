@@ -170,6 +170,20 @@ func (t *Table) RefuteLocalSuspect() Member {
 	return t.members[t.localID]
 }
 
+// SetLocalRangeMapEpoch updates the RangeMapEpoch advertised for the
+// local node, so gossip carries evidence that this node's range map
+// view has moved on. It is a plain local update, unrelated to
+// incarnation/status refutation.
+func (t *Table) SetLocalRangeMapEpoch(epoch uint64) Member {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	local := t.members[t.localID]
+	local.RangeMapEpoch = epoch
+	t.setLocked(local)
+	return t.members[t.localID]
+}
+
 // refuteLocked reacts to an incoming record about the local node. Only
 // suspicion or death accusations at an incarnation greater than or equal
 // to our own trigger a refutation; anything else is ignored since the

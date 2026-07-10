@@ -223,6 +223,22 @@ func TestSnapshotIsSortedAndIsolated(t *testing.T) {
 	}
 }
 
+func TestSetLocalRangeMapEpochUpdatesOnlyThatField(t *testing.T) {
+	table := newTestTable()
+	before := table.Local()
+
+	updated := table.SetLocalRangeMapEpoch(7)
+	if updated.RangeMapEpoch != 7 {
+		t.Fatalf("RangeMapEpoch = %d, want 7", updated.RangeMapEpoch)
+	}
+	if updated.Status != before.Status || updated.Incarnation != before.Incarnation {
+		t.Fatalf("expected status/incarnation untouched, got %+v", updated)
+	}
+	if local := table.Local(); local.RangeMapEpoch != 7 {
+		t.Fatalf("Local() = %+v, want RangeMapEpoch 7", local)
+	}
+}
+
 func TestMembershipEpochIncrementsOnChange(t *testing.T) {
 	table := newTestTable()
 	before := table.Local().MembershipEpoch

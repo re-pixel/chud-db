@@ -25,7 +25,7 @@ func TestSyncerTickSkipsPeersAtOrBelowLocalGeneration(t *testing.T) {
 		{NodeID: "peer-1", AdvertiseAddr: "10.0.0.1:7000", RangeMapEpoch: 1},
 	}}
 
-	s := NewSyncer(table, client, peers, testSyncerConfig())
+	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
 	if len(client.callsSnapshot()) != 0 {
@@ -51,7 +51,7 @@ func TestSyncerTickPullsAndReplacesFromNewerPeer(t *testing.T) {
 		{NodeID: "peer-1", AdvertiseAddr: "10.0.0.1:7000", RangeMapEpoch: 2},
 	}}
 
-	s := NewSyncer(table, client, peers, testSyncerConfig())
+	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
 	if table.Generation() != 2 {
@@ -79,7 +79,7 @@ func TestSyncerTickTriesNextPeerOnPullFailure(t *testing.T) {
 		{NodeID: "peer-2", AdvertiseAddr: "10.0.0.2:7000", RangeMapEpoch: 2},
 	}}
 
-	s := NewSyncer(table, client, peers, testSyncerConfig())
+	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
 	if table.Generation() != 2 {
@@ -112,11 +112,55 @@ func TestSyncerTickTriesNextPeerWhenFetchedMapIsStale(t *testing.T) {
 		{NodeID: "peer-2", AdvertiseAddr: "10.0.0.2:7000", RangeMapEpoch: 2},
 	}}
 
-	s := NewSyncer(table, client, peers, testSyncerConfig())
+	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
 	if table.Generation() != 2 {
 		t.Fatalf("generation = %d, want 2 after falling back past a stale response", table.Generation())
+	}
+}
+
+func TestSyncerTickPublishesNewGenerationOnSuccessfulReplace(t *testing.T) {
+	table, err := NewTable("node-1", singleRange("node-1"))
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	newer := RangeMap{
+		Generation: 2,
+		Ranges:     []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}}},
+	}
+	client := newFakeRangeMapClient()
+	client.results["10.0.0.1:7000"] = rangeMapResult{rangeMap: newer}
+	peers := &fakePeerEpochSource{peers: []PeerEpoch{
+		{NodeID: "peer-1", AdvertiseAddr: "10.0.0.1:7000", RangeMapEpoch: 2},
+	}}
+	publisher := &fakeEpochPublisher{}
+
+	s := NewSyncer(table, client, peers, publisher, testSyncerConfig())
+	s.tick(context.Background())
+
+	published := publisher.publishedSnapshot()
+	if len(published) != 1 || published[0] != 2 {
+		t.Fatalf("published = %v, want [2]", published)
+	}
+}
+
+func TestSyncerTickDoesNotPublishWhenNoPeerHasNewerEpoch(t *testing.T) {
+	table, err := NewTable("node-1", singleRange("node-1"))
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	client := newFakeRangeMapClient()
+	peers := &fakePeerEpochSource{peers: []PeerEpoch{
+		{NodeID: "peer-1", AdvertiseAddr: "10.0.0.1:7000", RangeMapEpoch: 1},
+	}}
+	publisher := &fakeEpochPublisher{}
+
+	s := NewSyncer(table, client, peers, publisher, testSyncerConfig())
+	s.tick(context.Background())
+
+	if published := publisher.publishedSnapshot(); len(published) != 0 {
+		t.Fatalf("published = %v, want none", published)
 	}
 }
 
@@ -137,7 +181,7 @@ func TestSyncerStartStopRunsLoopAndStopsCleanly(t *testing.T) {
 
 	cfg := testSyncerConfig()
 	cfg.Interval = 5 * time.Millisecond
-	s := NewSyncer(table, client, peers, cfg)
+	s := NewSyncer(table, client, peers, nil, cfg)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	s.Start(ctx)
@@ -195,4 +239,21 @@ type fakePeerEpochSource struct {
 
 func (s *fakePeerEpochSource) PeerEpochs() []PeerEpoch {
 	return s.peers
+}
+
+type fakeEpochPublisher struct {
+	mu        sync.Mutex
+	published []uint64
+}
+
+func (p *fakeEpochPublisher) PublishRangeMapEpoch(epoch uint64) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.published = append(p.published, epoch)
+}
+
+func (p *fakeEpochPublisher) publishedSnapshot() []uint64 {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return append([]uint64(nil), p.published...)
 }
