@@ -137,6 +137,49 @@ func TestRangeMapOwnersFindsContainingRange(t *testing.T) {
 	}
 }
 
+func TestRangeMapOwnersForKeyRangeWithinSingleRange(t *testing.T) {
+	m := RangeMap{
+		Generation: 1,
+		Ranges: []Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}},
+			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}},
+		},
+	}
+
+	owners, ok := m.OwnersForKeyRange("a", "b")
+	if !ok || len(owners) != 1 || owners[0] != "node-1" {
+		t.Fatalf("owners = %#v, ok=%v", owners, ok)
+	}
+}
+
+func TestRangeMapOwnersForKeyRangeRejectsBoundaryStraddling(t *testing.T) {
+	m := RangeMap{
+		Generation: 1,
+		Ranges: []Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}},
+			{Start: "m", End: "", Replicas: []string{"node-2"}},
+		},
+	}
+
+	if _, ok := m.OwnersForKeyRange("a", "z"); ok {
+		t.Fatalf("expected scan straddling the range boundary to be rejected")
+	}
+	// end == the exclusive boundary of the containing range: the
+	// boundary key itself belongs to the next range, so this still
+	// straddles.
+	if _, ok := m.OwnersForKeyRange("a", "m"); ok {
+		t.Fatalf("expected scan ending exactly at the range boundary to be rejected")
+	}
+}
+
+func TestRangeMapOwnersForKeyRangeUnboundedRangeAcceptsAnyEnd(t *testing.T) {
+	m := singleRange("node-1")
+
+	if _, ok := m.OwnersForKeyRange("a", "zzzzzzzz"); !ok {
+		t.Fatalf("expected a fully unbounded range to own any end key")
+	}
+}
+
 func TestRangeMapCloneIsIndependent(t *testing.T) {
 	m := singleRange("node-1")
 	clone := m.Clone()

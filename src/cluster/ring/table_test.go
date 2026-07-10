@@ -32,6 +32,42 @@ func TestIsOwnerFalseWhenNotInReplicaSet(t *testing.T) {
 	}
 }
 
+func TestOwnsKeyRangeWithinSingleOwnedRange(t *testing.T) {
+	table, err := NewTable("node-1", singleRange("node-1", "node-2"))
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	if !table.OwnsKeyRange("a", "z") {
+		t.Fatalf("expected node-1 to own a scan fully within the single global range")
+	}
+}
+
+func TestOwnsKeyRangeFalseWhenNotInReplicaSet(t *testing.T) {
+	table, err := NewTable("node-3", singleRange("node-1", "node-2"))
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	if table.OwnsKeyRange("a", "z") {
+		t.Fatalf("node-3 should not own a scan over a range it's not a replica of")
+	}
+}
+
+func TestOwnsKeyRangeFalseWhenScanStraddlesBoundary(t *testing.T) {
+	table, err := NewTable("node-1", RangeMap{
+		Generation: 2,
+		Ranges: []Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}},
+			{Start: "m", End: "", Replicas: []string{"node-1"}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	if table.OwnsKeyRange("a", "z") {
+		t.Fatalf("expected scan straddling a range boundary to be rejected even when node-1 owns both sides")
+	}
+}
+
 func TestReplaceAcceptsStrictlyNewerGeneration(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1"))
 	if err != nil {

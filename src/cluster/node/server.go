@@ -19,16 +19,32 @@ type Store interface {
 	ScanRange(start, end string, pageNum, pageSize int) ([]versioning.KeyEnvelope, error)
 }
 
+// RangeOwnership reports whether the local node currently owns a given
+// key or key range, per the cluster's range map. It is a hard,
+// non-forwarding gate: a request for a key/range this node doesn't own
+// is rejected outright rather than proxied to the right node (that is
+// the caller's - e.g. the coordinator/proxy's - responsibility).
+type RangeOwnership interface {
+	IsOwner(key string) bool
+	OwnsKeyRange(start, end string) bool
+	Owners(key string) []string
+}
+
 type Server struct {
 	pb.UnimplementedNodeServiceServer
 
-	cfg   clusterconfig.Config
-	store Store
-	ready bool
+	cfg       clusterconfig.Config
+	store     Store
+	ownership RangeOwnership
+	ready     bool
 }
 
-func NewServer(cfg clusterconfig.Config, store Store) *Server {
-	return &Server{cfg: cfg, store: store, ready: true}
+func NewServer(cfg clusterconfig.Config, store Store, ownership RangeOwnership) *Server {
+	return &Server{cfg: cfg, store: store, ownership: ownership, ready: true}
+}
+
+func (s *Server) notOwnerError(key string) error {
+	return status.Errorf(codes.FailedPrecondition, "key %q is not owned by this node (current owners: %v)", key, s.ownership.Owners(key))
 }
 
 func (s *Server) Put(ctx context.Context, req *pb.PutRequest) (*pb.WriteResponse, error) {
@@ -37,6 +53,9 @@ func (s *Server) Put(ctx context.Context, req *pb.PutRequest) (*pb.WriteResponse
 	}
 	if req.GetKey() == "" {
 		return nil, status.Error(codes.InvalidArgument, "key must not be empty")
+	}
+	if !s.ownership.IsOwner(req.GetKey()) {
+		return nil, s.notOwnerError(req.GetKey())
 	}
 	envelope, err := transport.EnvelopeFromProto(req.GetEnvelope())
 	if err != nil {
@@ -55,6 +74,9 @@ func (s *Server) Delete(ctx context.Context, req *pb.DeleteRequest) (*pb.WriteRe
 	if req.GetKey() == "" {
 		return nil, status.Error(codes.InvalidArgument, "key must not be empty")
 	}
+	if !s.ownership.IsOwner(req.GetKey()) {
+		return nil, s.notOwnerError(req.GetKey())
+	}
 	envelope, err := transport.EnvelopeFromProto(req.GetEnvelope())
 	if err != nil {
 		return nil, status.Errorf(codes.InvalidArgument, "invalid envelope: %v", err)
@@ -71,6 +93,9 @@ func (s *Server) Get(ctx context.Context, req *pb.GetRequest) (*pb.GetResponse, 
 	}
 	if req.GetKey() == "" {
 		return nil, status.Error(codes.InvalidArgument, "key must not be empty")
+	}
+	if !s.ownership.IsOwner(req.GetKey()) {
+		return nil, s.notOwnerError(req.GetKey())
 	}
 	envelope, found, err := s.store.Get(req.GetKey())
 	if err != nil {
@@ -92,6 +117,9 @@ func (s *Server) RangeScan(ctx context.Context, req *pb.RangeScanRequest) (*pb.R
 	}
 	if req.GetPageSize() < 1 {
 		return nil, status.Error(codes.InvalidArgument, "page_size must be >= 1")
+	}
+	if !s.ownership.OwnsKeyRange(req.GetStart(), req.GetEnd()) {
+		return nil, status.Errorf(codes.FailedPrecondition, "range [%q, %q] is not fully owned by this node", req.GetStart(), req.GetEnd())
 	}
 
 	rows, err := s.store.ScanRange(req.GetStart(), req.GetEnd(), int(req.GetPageNum()), int(req.GetPageSize()))

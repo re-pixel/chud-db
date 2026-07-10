@@ -66,3 +66,23 @@ func (m RangeMap) Owners(key string) ([]string, bool) {
 	}
 	return nil, false
 }
+
+// OwnersForKeyRange returns the replica node IDs owning every key in
+// the closed interval [start, end] - matching engine.RangeScan's
+// inclusive-on-both-ends convention, unlike Range's own half-open
+// [Start, End) convention - and whether the whole interval falls
+// within a single Range. A scan straddling a range boundary has no
+// single owner set and reports false, even if every individual range
+// it touches happens to share the same replicas.
+func (m RangeMap) OwnersForKeyRange(start, end string) ([]string, bool) {
+	for _, r := range m.Ranges {
+		if !r.Contains(start) {
+			continue
+		}
+		if r.End != "" && end >= r.End {
+			return nil, false
+		}
+		return append([]string(nil), r.Replicas...), true
+	}
+	return nil, false
+}

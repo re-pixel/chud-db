@@ -48,8 +48,17 @@ func run() error {
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddr, err)
 	}
 
+	ringTable, err := clusterring.NewTable(cfg.NodeID, clusterring.RangeMap{
+		Generation: cfg.RangeMapGeneration,
+		Ranges:     []clusterring.Range{{Start: "", End: "", Replicas: cfg.RangeMapReplicas}},
+	})
+	if err != nil {
+		return fmt.Errorf("build initial range map: %w", err)
+	}
+	ringServer := clusterring.NewServer(ringTable)
+
 	store := clusternode.NewNodeStore(eng, clusternode.DefaultStoreUser)
-	nodeServer := clusternode.NewServer(cfg, store)
+	nodeServer := clusternode.NewServer(cfg, store, ringTable)
 
 	membershipClient := clustermembership.NewClient()
 	defer membershipClient.Close() //nolint:errcheck
@@ -68,15 +77,6 @@ func run() error {
 		IndirectPingFanout: cfg.IndirectPingFanout,
 		Seeds:              cfg.Seeds,
 	})
-
-	ringTable, err := clusterring.NewTable(cfg.NodeID, clusterring.RangeMap{
-		Generation: cfg.RangeMapGeneration,
-		Ranges:     []clusterring.Range{{Start: "", End: "", Replicas: cfg.RangeMapReplicas}},
-	})
-	if err != nil {
-		return fmt.Errorf("build initial range map: %w", err)
-	}
-	ringServer := clusterring.NewServer(ringTable)
 
 	ringClient := clusterring.NewClient()
 	defer ringClient.Close() //nolint:errcheck

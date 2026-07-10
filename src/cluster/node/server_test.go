@@ -3,6 +3,7 @@ package node
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -20,7 +21,7 @@ func TestServerHealth(t *testing.T) {
 	cfg.NodeID = "node-a"
 	cfg.ClusterID = "cluster-a"
 	cfg.AdvertiseAddr = "127.0.0.1:7000"
-	server := NewServer(cfg, newFakeStore())
+	server := NewServer(cfg, newFakeStore(), newFakeOwnership())
 
 	resp, err := server.Health(context.Background(), &pb.HealthRequest{})
 	if err != nil {
@@ -36,7 +37,7 @@ func TestServerHealth(t *testing.T) {
 
 func TestServerPut(t *testing.T) {
 	store := newFakeStore()
-	server := NewServer(clusterconfig.DefaultConfig(), store)
+	server := NewServer(clusterconfig.DefaultConfig(), store, newFakeOwnership())
 	env := versioning.NewPut(versioning.VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
 
 	resp, err := server.Put(context.Background(), &pb.PutRequest{
@@ -56,7 +57,7 @@ func TestServerPut(t *testing.T) {
 }
 
 func TestServerPutRejectsInvalidRequest(t *testing.T) {
-	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore())
+	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore(), newFakeOwnership())
 
 	_, err := server.Put(context.Background(), &pb.PutRequest{})
 	if status.Code(err) != codes.InvalidArgument {
@@ -66,7 +67,7 @@ func TestServerPutRejectsInvalidRequest(t *testing.T) {
 
 func TestServerDelete(t *testing.T) {
 	store := newFakeStore()
-	server := NewServer(clusterconfig.DefaultConfig(), store)
+	server := NewServer(clusterconfig.DefaultConfig(), store, newFakeOwnership())
 	env := versioning.NewDelete(versioning.VectorClock{"node-a": 2}, time.Unix(0, 2))
 
 	resp, err := server.Delete(context.Background(), &pb.DeleteRequest{
@@ -89,7 +90,7 @@ func TestServerGetFound(t *testing.T) {
 	store := newFakeStore()
 	store.getEnvelope = versioning.NewPut(versioning.VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
 	store.getFound = true
-	server := NewServer(clusterconfig.DefaultConfig(), store)
+	server := NewServer(clusterconfig.DefaultConfig(), store, newFakeOwnership())
 
 	resp, err := server.Get(context.Background(), &pb.GetRequest{Key: "key"})
 	if err != nil {
@@ -108,7 +109,7 @@ func TestServerGetFound(t *testing.T) {
 }
 
 func TestServerGetMissing(t *testing.T) {
-	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore())
+	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore(), newFakeOwnership())
 
 	resp, err := server.Get(context.Background(), &pb.GetRequest{Key: "missing"})
 	if err != nil {
@@ -128,7 +129,7 @@ func TestServerRangeScan(t *testing.T) {
 		{Key: "a", Envelope: versioning.NewPut(versioning.VectorClock{"node-a": 1}, "a-value", time.Unix(0, 1))},
 		{Key: "b", Envelope: versioning.NewDelete(versioning.VectorClock{"node-a": 2}, time.Unix(0, 2))},
 	}
-	server := NewServer(clusterconfig.DefaultConfig(), store)
+	server := NewServer(clusterconfig.DefaultConfig(), store, newFakeOwnership())
 
 	resp, err := server.RangeScan(context.Background(), &pb.RangeScanRequest{
 		Start:    "a",
@@ -148,7 +149,7 @@ func TestServerRangeScan(t *testing.T) {
 }
 
 func TestServerRangeScanRejectsBadPagination(t *testing.T) {
-	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore())
+	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore(), newFakeOwnership())
 
 	_, err := server.RangeScan(context.Background(), &pb.RangeScanRequest{PageNum: 0, PageSize: 10})
 	if status.Code(err) != codes.InvalidArgument {
@@ -156,10 +157,72 @@ func TestServerRangeScanRejectsBadPagination(t *testing.T) {
 	}
 }
 
+func TestServerPutRejectsNonOwnedKey(t *testing.T) {
+	store := newFakeStore()
+	ownership := newFakeOwnership()
+	ownership.ownsKey = false
+	server := NewServer(clusterconfig.DefaultConfig(), store, ownership)
+	env := versioning.NewPut(versioning.VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
+
+	_, err := server.Put(context.Background(), &pb.PutRequest{Key: "key", Envelope: transport.EnvelopeToProto(env)})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("status = %v, err = %v", status.Code(err), err)
+	}
+	if store.put.key != "" {
+		t.Fatalf("expected store.Put not to be called for a non-owned key")
+	}
+}
+
+func TestServerDeleteRejectsNonOwnedKey(t *testing.T) {
+	store := newFakeStore()
+	ownership := newFakeOwnership()
+	ownership.ownsKey = false
+	server := NewServer(clusterconfig.DefaultConfig(), store, ownership)
+	env := versioning.NewDelete(versioning.VectorClock{"node-a": 2}, time.Unix(0, 2))
+
+	_, err := server.Delete(context.Background(), &pb.DeleteRequest{Key: "key", Envelope: transport.EnvelopeToProto(env)})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("status = %v, err = %v", status.Code(err), err)
+	}
+	if store.delete.key != "" {
+		t.Fatalf("expected store.Delete not to be called for a non-owned key")
+	}
+}
+
+func TestServerGetRejectsNonOwnedKey(t *testing.T) {
+	ownership := newFakeOwnership()
+	ownership.ownsKey = false
+	ownership.owners = []string{"other-node"}
+	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore(), ownership)
+
+	_, err := server.Get(context.Background(), &pb.GetRequest{Key: "key"})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("status = %v, err = %v", status.Code(err), err)
+	}
+	if !strings.Contains(err.Error(), "other-node") {
+		t.Fatalf("expected error to mention current owners, got %v", err)
+	}
+}
+
+func TestServerRangeScanRejectsNonOwnedRange(t *testing.T) {
+	store := newFakeStore()
+	ownership := newFakeOwnership()
+	ownership.ownsRange = false
+	server := NewServer(clusterconfig.DefaultConfig(), store, ownership)
+
+	_, err := server.RangeScan(context.Background(), &pb.RangeScanRequest{Start: "a", End: "z", PageNum: 1, PageSize: 10})
+	if status.Code(err) != codes.FailedPrecondition {
+		t.Fatalf("status = %v, err = %v", status.Code(err), err)
+	}
+	if store.rangeCall.start != "" {
+		t.Fatalf("expected store.ScanRange not to be called for a non-owned range")
+	}
+}
+
 func TestServerMapsStoreErrorsToInternal(t *testing.T) {
 	store := newFakeStore()
 	store.getErr = errors.New("store failed")
-	server := NewServer(clusterconfig.DefaultConfig(), store)
+	server := NewServer(clusterconfig.DefaultConfig(), store, newFakeOwnership())
 
 	_, err := server.Get(context.Background(), &pb.GetRequest{Key: "key"})
 	if status.Code(err) != codes.Internal {
@@ -168,7 +231,7 @@ func TestServerMapsStoreErrorsToInternal(t *testing.T) {
 }
 
 func TestServerContextCancellation(t *testing.T) {
-	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore())
+	server := NewServer(clusterconfig.DefaultConfig(), newFakeStore(), newFakeOwnership())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -226,3 +289,19 @@ func (s *fakeStore) ScanRange(start, end string, pageNum, pageSize int) ([]versi
 	s.rangeCall = storeRangeCall{start: start, end: end, pageNum: pageNum, pageSize: pageSize}
 	return s.rangeRows, s.rangeErr
 }
+
+// fakeOwnership defaults to owning everything, so existing tests that
+// don't care about ownership don't need to configure anything.
+type fakeOwnership struct {
+	ownsKey   bool
+	ownsRange bool
+	owners    []string
+}
+
+func newFakeOwnership() *fakeOwnership {
+	return &fakeOwnership{ownsKey: true, ownsRange: true, owners: []string{"local"}}
+}
+
+func (o *fakeOwnership) IsOwner(string) bool              { return o.ownsKey }
+func (o *fakeOwnership) OwnsKeyRange(string, string) bool { return o.ownsRange }
+func (o *fakeOwnership) Owners(string) []string           { return o.owners }
