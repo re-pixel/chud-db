@@ -28,6 +28,7 @@ type Config struct {
 	PingTimeout         time.Duration `json:"-"`
 	SuspectTimeout      time.Duration `json:"-"`
 	DeadTimeout         time.Duration `json:"-"`
+	ReplicationTimeout  time.Duration `json:"-"`
 	IndirectPingFanout  int           `json:"indirect_ping_fanout"`
 	RangeMapGeneration  uint64        `json:"range_map_generation"`
 	RangeMapReplicas    []string      `json:"range_map_replicas"`
@@ -50,6 +51,7 @@ type fileConfig struct {
 	PingTimeout         *string  `json:"ping_timeout"`
 	SuspectTimeout      *string  `json:"suspect_timeout"`
 	DeadTimeout         *string  `json:"dead_timeout"`
+	ReplicationTimeout  *string  `json:"replication_timeout"`
 	IndirectPingFanout  *int     `json:"indirect_ping_fanout"`
 	RangeMapGeneration  *uint64  `json:"range_map_generation"`
 	RangeMapReplicas    []string `json:"range_map_replicas"`
@@ -73,6 +75,7 @@ func DefaultConfig() Config {
 		PingTimeout:         500 * time.Millisecond,
 		SuspectTimeout:      5 * time.Second,
 		DeadTimeout:         30 * time.Second,
+		ReplicationTimeout:  2 * time.Second,
 		IndirectPingFanout:  3,
 		RangeMapGeneration:  1,
 	}
@@ -148,6 +151,9 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.DeadTimeout <= cfg.SuspectTimeout {
 		return fmt.Errorf("dead_timeout must be greater than suspect_timeout")
+	}
+	if cfg.ReplicationTimeout <= 0 {
+		return fmt.Errorf("replication_timeout must be > 0")
 	}
 	if cfg.IndirectPingFanout < 0 {
 		return fmt.Errorf("indirect_ping_fanout must be >= 0")
@@ -231,6 +237,13 @@ func applyFileConfig(cfg *Config, data []byte) error {
 			return fmt.Errorf("parse dead_timeout: %w", err)
 		}
 		cfg.DeadTimeout = d
+	}
+	if fc.ReplicationTimeout != nil {
+		d, err := time.ParseDuration(*fc.ReplicationTimeout)
+		if err != nil {
+			return fmt.Errorf("parse replication_timeout: %w", err)
+		}
+		cfg.ReplicationTimeout = d
 	}
 	if fc.IndirectPingFanout != nil {
 		cfg.IndirectPingFanout = *fc.IndirectPingFanout
@@ -332,6 +345,13 @@ func applyEnv(cfg *Config) error {
 			return fmt.Errorf("parse %sDEAD_TIMEOUT: %w", envPrefix, err)
 		}
 		cfg.DeadTimeout = d
+	}
+	if v, ok := getenv("REPLICATION_TIMEOUT"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sREPLICATION_TIMEOUT: %w", envPrefix, err)
+		}
+		cfg.ReplicationTimeout = d
 	}
 	if v, ok := getenv("INDIRECT_PING_FANOUT"); ok {
 		n, err := strconv.Atoi(v)

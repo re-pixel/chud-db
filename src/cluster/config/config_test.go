@@ -22,6 +22,9 @@ func TestDefaultConfigValidates(t *testing.T) {
 	if cfg.SuspectTimeout != 5*time.Second || cfg.DeadTimeout != 30*time.Second {
 		t.Fatalf("unexpected default failure detector timings: %+v", cfg)
 	}
+	if cfg.ReplicationTimeout != 2*time.Second {
+		t.Fatalf("unexpected default replication timeout: %+v", cfg)
+	}
 	if cfg.IndirectPingFanout != 3 {
 		t.Fatalf("unexpected default indirect ping fanout: %+v", cfg)
 	}
@@ -72,6 +75,7 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 		"ping_timeout": "250ms",
 		"suspect_timeout": "10s",
 		"dead_timeout": "60s",
+		"replication_timeout": "3s",
 		"indirect_ping_fanout": 5,
 		"range_map_generation": 4,
 		"range_map_replicas": ["node-1", "node-2", "node-3"]
@@ -105,6 +109,9 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 	if cfg.DeadTimeout != 60*time.Second {
 		t.Fatalf("dead timeout = %v", cfg.DeadTimeout)
 	}
+	if cfg.ReplicationTimeout != 3*time.Second {
+		t.Fatalf("replication timeout = %v", cfg.ReplicationTimeout)
+	}
 	if cfg.IndirectPingFanout != 5 {
 		t.Fatalf("indirect ping fanout = %v", cfg.IndirectPingFanout)
 	}
@@ -134,6 +141,7 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	t.Setenv("NOSQL_CLUSTER_PING_TIMEOUT", "750ms")
 	t.Setenv("NOSQL_CLUSTER_SUSPECT_TIMEOUT", "15s")
 	t.Setenv("NOSQL_CLUSTER_DEAD_TIMEOUT", "90s")
+	t.Setenv("NOSQL_CLUSTER_REPLICATION_TIMEOUT", "4s")
 	t.Setenv("NOSQL_CLUSTER_INDIRECT_PING_FANOUT", "7")
 	t.Setenv("NOSQL_CLUSTER_RANGE_MAP_GENERATION", "9")
 	t.Setenv("NOSQL_CLUSTER_RANGE_MAP_REPLICAS", "node-1, node-2,,")
@@ -162,6 +170,9 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}
 	if cfg.DeadTimeout != 90*time.Second {
 		t.Fatalf("dead timeout = %v", cfg.DeadTimeout)
+	}
+	if cfg.ReplicationTimeout != 4*time.Second {
+		t.Fatalf("replication timeout = %v", cfg.ReplicationTimeout)
 	}
 	if cfg.IndirectPingFanout != 7 {
 		t.Fatalf("indirect ping fanout = %v", cfg.IndirectPingFanout)
@@ -215,6 +226,16 @@ func TestValidateRejectsDeadTimeoutBelowSuspectTimeout(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "dead_timeout") {
 		t.Fatalf("expected dead_timeout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveReplicationTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.ReplicationTimeout = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "replication_timeout") {
+		t.Fatalf("expected replication_timeout error, got %v", err)
 	}
 }
 
