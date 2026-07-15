@@ -13,6 +13,7 @@ import (
 	clusterconfig "nosqlEngine/src/cluster/config"
 	clustermembership "nosqlEngine/src/cluster/membership"
 	clusternode "nosqlEngine/src/cluster/node"
+	clusterreplication "nosqlEngine/src/cluster/replication"
 	clusterring "nosqlEngine/src/cluster/ring"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/engine"
@@ -34,6 +35,10 @@ func run() error {
 	cfg, err := clusterconfig.Load(*configPath)
 	if err != nil {
 		return fmt.Errorf("load config: %w", err)
+	}
+	if len(cfg.RangeMapReplicas) != cfg.ReplicationFactor {
+		fmt.Fprintf(os.Stderr, "node %s: warning: range_map_replicas has %d entries but replication_factor is %d - these should agree\n",
+			cfg.NodeID, len(cfg.RangeMapReplicas), cfg.ReplicationFactor)
 	}
 
 	eng, err := engine.NewEngineInDir(cfg.DataDir)
@@ -89,10 +94,28 @@ func run() error {
 		clusterring.SyncerConfig{Interval: cfg.GossipInterval, PullTimeout: cfg.PingTimeout},
 	)
 
+	replicationClient := clusterreplication.NewClient()
+	defer replicationClient.Close() //nolint:errcheck
+
+	coordinator := clusterreplication.NewCoordinator(
+		cfg.NodeID,
+		ringTable,
+		membershipAddressResolver{table},
+		replicationClient,
+		store,
+		clusterreplication.Config{
+			ReplicationTimeout: cfg.ReplicationTimeout,
+			ReadQuorum:         cfg.ReadQuorum,
+			WriteQuorum:        cfg.WriteQuorum,
+		},
+	)
+	replicationServer := clusterreplication.NewServer(coordinator)
+
 	grpcServer := grpc.NewServer()
 	pb.RegisterNodeServiceServer(grpcServer, nodeServer)
 	pb.RegisterGossipServiceServer(grpcServer, gossipServer)
 	pb.RegisterRangeMapServiceServer(grpcServer, ringServer)
+	pb.RegisterReplicationServiceServer(grpcServer, replicationServer)
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -150,6 +173,21 @@ func (m membershipPeerEpochs) PeerEpochs() []clusterring.PeerEpoch {
 		})
 	}
 	return peers
+}
+
+// membershipAddressResolver adapts a membership.Table into the
+// clusterreplication.AddressResolver the Coordinator needs, without
+// making the replication package depend on membership.
+type membershipAddressResolver struct {
+	table *clustermembership.Table
+}
+
+func (m membershipAddressResolver) Address(nodeID string) (string, bool) {
+	member, ok := m.table.Get(nodeID)
+	if !ok {
+		return "", false
+	}
+	return member.AdvertiseAddr, true
 }
 
 func shutdownGRPC(server *grpc.Server) {
