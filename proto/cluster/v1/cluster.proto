@@ -83,24 +83,37 @@ message HealthResponse {
   bool ready = 3;
 }
 
-message ReplicatePutRequest {
+message CoordinatedPutRequest {
   string key = 1;
-  Envelope envelope = 2;
+  string value = 2;
+  VectorClock context = 3;
+  uint32 write_quorum = 4; // 0 = use cluster default
 }
 
-message ReplicateDeleteRequest {
+message CoordinatedDeleteRequest {
   string key = 1;
-  Envelope envelope = 2;
+  VectorClock context = 2;
+  uint32 write_quorum = 3;
 }
 
-message FetchVersionRequest {
-  string key = 1;
+message CoordinatedWriteResponse {
+  Status status = 1;
+  VectorClock vector_clock = 2; // stamped clock, hand back as next context
+  int32 acks = 3;
+  int32 required = 4;
 }
 
-message FetchVersionResponse {
+message CoordinatedGetRequest {
+  string key = 1;
+  uint32 read_quorum = 2;
+}
+
+message CoordinatedGetResponse {
   Status status = 1;
   bool found = 2;
-  Envelope envelope = 3;
+  string value = 3;
+  VectorClock vector_clock = 4;
+  bool had_conflict = 5; // Reconcile found siblings, resolved via PickByTimestamp (Phase 5 replaces this)
 }
 
 enum MemberStatus {
@@ -225,9 +238,9 @@ service NodeService {
 }
 
 service ReplicationService {
-  rpc ReplicatePut(ReplicatePutRequest) returns (WriteResponse);
-  rpc ReplicateDelete(ReplicateDeleteRequest) returns (WriteResponse);
-  rpc FetchVersion(FetchVersionRequest) returns (FetchVersionResponse);
+  rpc Put(CoordinatedPutRequest) returns (CoordinatedWriteResponse);
+  rpc Delete(CoordinatedDeleteRequest) returns (CoordinatedWriteResponse);
+  rpc Get(CoordinatedGetRequest) returns (CoordinatedGetResponse);
 }
 
 service GossipService {

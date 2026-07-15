@@ -273,18 +273,18 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ReplicationService_ReplicatePut_FullMethodName    = "/nosql.cluster.v1.ReplicationService/ReplicatePut"
-	ReplicationService_ReplicateDelete_FullMethodName = "/nosql.cluster.v1.ReplicationService/ReplicateDelete"
-	ReplicationService_FetchVersion_FullMethodName    = "/nosql.cluster.v1.ReplicationService/FetchVersion"
+	ReplicationService_Put_FullMethodName    = "/nosql.cluster.v1.ReplicationService/Put"
+	ReplicationService_Delete_FullMethodName = "/nosql.cluster.v1.ReplicationService/Delete"
+	ReplicationService_Get_FullMethodName    = "/nosql.cluster.v1.ReplicationService/Get"
 )
 
 // ReplicationServiceClient is the client API for ReplicationService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type ReplicationServiceClient interface {
-	ReplicatePut(ctx context.Context, in *ReplicatePutRequest, opts ...grpc.CallOption) (*WriteResponse, error)
-	ReplicateDelete(ctx context.Context, in *ReplicateDeleteRequest, opts ...grpc.CallOption) (*WriteResponse, error)
-	FetchVersion(ctx context.Context, in *FetchVersionRequest, opts ...grpc.CallOption) (*FetchVersionResponse, error)
+	Put(ctx context.Context, in *CoordinatedPutRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error)
+	Delete(ctx context.Context, in *CoordinatedDeleteRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error)
+	Get(ctx context.Context, in *CoordinatedGetRequest, opts ...grpc.CallOption) (*CoordinatedGetResponse, error)
 }
 
 type replicationServiceClient struct {
@@ -295,30 +295,30 @@ func NewReplicationServiceClient(cc grpc.ClientConnInterface) ReplicationService
 	return &replicationServiceClient{cc}
 }
 
-func (c *replicationServiceClient) ReplicatePut(ctx context.Context, in *ReplicatePutRequest, opts ...grpc.CallOption) (*WriteResponse, error) {
+func (c *replicationServiceClient) Put(ctx context.Context, in *CoordinatedPutRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(WriteResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_ReplicatePut_FullMethodName, in, out, cOpts...)
+	out := new(CoordinatedWriteResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_Put_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationServiceClient) ReplicateDelete(ctx context.Context, in *ReplicateDeleteRequest, opts ...grpc.CallOption) (*WriteResponse, error) {
+func (c *replicationServiceClient) Delete(ctx context.Context, in *CoordinatedDeleteRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(WriteResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_ReplicateDelete_FullMethodName, in, out, cOpts...)
+	out := new(CoordinatedWriteResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_Delete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationServiceClient) FetchVersion(ctx context.Context, in *FetchVersionRequest, opts ...grpc.CallOption) (*FetchVersionResponse, error) {
+func (c *replicationServiceClient) Get(ctx context.Context, in *CoordinatedGetRequest, opts ...grpc.CallOption) (*CoordinatedGetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	out := new(FetchVersionResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_FetchVersion_FullMethodName, in, out, cOpts...)
+	out := new(CoordinatedGetResponse)
+	err := c.cc.Invoke(ctx, ReplicationService_Get_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -329,9 +329,9 @@ func (c *replicationServiceClient) FetchVersion(ctx context.Context, in *FetchVe
 // All implementations must embed UnimplementedReplicationServiceServer
 // for forward compatibility.
 type ReplicationServiceServer interface {
-	ReplicatePut(context.Context, *ReplicatePutRequest) (*WriteResponse, error)
-	ReplicateDelete(context.Context, *ReplicateDeleteRequest) (*WriteResponse, error)
-	FetchVersion(context.Context, *FetchVersionRequest) (*FetchVersionResponse, error)
+	Put(context.Context, *CoordinatedPutRequest) (*CoordinatedWriteResponse, error)
+	Delete(context.Context, *CoordinatedDeleteRequest) (*CoordinatedWriteResponse, error)
+	Get(context.Context, *CoordinatedGetRequest) (*CoordinatedGetResponse, error)
 	mustEmbedUnimplementedReplicationServiceServer()
 }
 
@@ -342,14 +342,14 @@ type ReplicationServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedReplicationServiceServer struct{}
 
-func (UnimplementedReplicationServiceServer) ReplicatePut(context.Context, *ReplicatePutRequest) (*WriteResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReplicatePut not implemented")
+func (UnimplementedReplicationServiceServer) Put(context.Context, *CoordinatedPutRequest) (*CoordinatedWriteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Put not implemented")
 }
-func (UnimplementedReplicationServiceServer) ReplicateDelete(context.Context, *ReplicateDeleteRequest) (*WriteResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method ReplicateDelete not implemented")
+func (UnimplementedReplicationServiceServer) Delete(context.Context, *CoordinatedDeleteRequest) (*CoordinatedWriteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedReplicationServiceServer) FetchVersion(context.Context, *FetchVersionRequest) (*FetchVersionResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "method FetchVersion not implemented")
+func (UnimplementedReplicationServiceServer) Get(context.Context, *CoordinatedGetRequest) (*CoordinatedGetResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
 }
 func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
 func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
@@ -372,56 +372,56 @@ func RegisterReplicationServiceServer(s grpc.ServiceRegistrar, srv ReplicationSe
 	s.RegisterService(&ReplicationService_ServiceDesc, srv)
 }
 
-func _ReplicationService_ReplicatePut_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReplicatePutRequest)
+func _ReplicationService_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CoordinatedPutRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).ReplicatePut(ctx, in)
+		return srv.(ReplicationServiceServer).Put(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_ReplicatePut_FullMethodName,
+		FullMethod: ReplicationService_Put_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).ReplicatePut(ctx, req.(*ReplicatePutRequest))
+		return srv.(ReplicationServiceServer).Put(ctx, req.(*CoordinatedPutRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ReplicationService_ReplicateDelete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(ReplicateDeleteRequest)
+func _ReplicationService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CoordinatedDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).ReplicateDelete(ctx, in)
+		return srv.(ReplicationServiceServer).Delete(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_ReplicateDelete_FullMethodName,
+		FullMethod: ReplicationService_Delete_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).ReplicateDelete(ctx, req.(*ReplicateDeleteRequest))
+		return srv.(ReplicationServiceServer).Delete(ctx, req.(*CoordinatedDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ReplicationService_FetchVersion_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(FetchVersionRequest)
+func _ReplicationService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CoordinatedGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).FetchVersion(ctx, in)
+		return srv.(ReplicationServiceServer).Get(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_FetchVersion_FullMethodName,
+		FullMethod: ReplicationService_Get_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).FetchVersion(ctx, req.(*FetchVersionRequest))
+		return srv.(ReplicationServiceServer).Get(ctx, req.(*CoordinatedGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -434,16 +434,16 @@ var ReplicationService_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*ReplicationServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "ReplicatePut",
-			Handler:    _ReplicationService_ReplicatePut_Handler,
+			MethodName: "Put",
+			Handler:    _ReplicationService_Put_Handler,
 		},
 		{
-			MethodName: "ReplicateDelete",
-			Handler:    _ReplicationService_ReplicateDelete_Handler,
+			MethodName: "Delete",
+			Handler:    _ReplicationService_Delete_Handler,
 		},
 		{
-			MethodName: "FetchVersion",
-			Handler:    _ReplicationService_FetchVersion_Handler,
+			MethodName: "Get",
+			Handler:    _ReplicationService_Get_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
