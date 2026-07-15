@@ -137,15 +137,45 @@ go build -o bin/nosql-node ./cmd/node
 Within a couple of `gossip_interval` ticks each node's membership table converges to all three nodes marked `alive`. Membership is in-memory only (v1) — restart a node and it re-bootstraps from the seed list.
 
 The three example configs also carry a static, matching range map
-(`range_map_generation: 1`, `range_map_replicas: ["node-1", "node-2"]`)
-so the same smoke test cluster can be used to check range ownership:
-querying `RangeMapService.GetRangeMap` on any of the three nodes returns
-the identical single global range `["", "") -> [node-1, node-2]`, and
-`node-3` — deliberately left out of the replica list — rejects
-`NodeService.Put`/`Get`/`RangeScan` with `FailedPrecondition`, while
-`node-1`/`node-2` serve them normally. Range map propagation in Phase 3
-is config-driven only (no live mutation yet), so all three files must
-list the same generation/replicas for the map to actually agree.
+(`range_map_generation: 1`, `range_map_replicas: ["node-1", "node-2"]`,
+`replication_factor: 2`) so the same smoke test cluster can be used to
+check range ownership: querying `RangeMapService.GetRangeMap` on any of
+the three nodes returns the identical single global range
+`["", "") -> [node-1, node-2]`, and `node-3` — deliberately left out of
+the replica list — rejects `NodeService.Put`/`Get`/`RangeScan` with
+`FailedPrecondition`, while `node-1`/`node-2` serve them normally. Range
+map propagation in Phase 3 is config-driven only (no live mutation
+yet), so all three files must list the same generation/replicas for the
+map to actually agree.
+
+### Coordinated writes/reads (Phase 4 quorum replication)
+
+Every node also serves `ReplicationService` — a client-facing
+coordinator that any node can run for any key, regardless of whether it
+owns that key itself. This is the direct, visible contrast with the
+hard-reject behavior above: `NodeService.Put` on `node-3` rejects a
+non-owned key outright, but `ReplicationService.Put` on `node-3` for
+the very same key succeeds, because the coordinator resolves the real
+owners (`node-1`, `node-2`) from its local range map and fans the write
+out to them over gRPC (`CoordinatedPutRequest`/`CoordinatedGetRequest`
+on `ReplicationService`, e.g. via `grpcurl` or a small Go client using
+`pb.NewReplicationServiceClient`).
+
+With the 3-node cluster above running:
+- `ReplicationService.Put` issued *to node-3* for a new key returns
+  `acks=2 required=2` and lands durably on `node-1` and `node-2` —
+  `ReplicationService.Get` from *any* of the three nodes (including
+  node-3, which owns nothing) then returns the same value, proving
+  replication actually happened rather than each node just having a
+  separate, disjoint engine.
+- Kill one replica (e.g. `node-2`) and retry: a `Put` with
+  `write_quorum=1` still succeeds (`acks=1 required=1`, the one
+  remaining owner acking), while the same `Put` with `write_quorum=2`
+  fails with `codes.Unavailable` ("got 1/2 acks") — demonstrating quorum
+  degradation without any rollback of the write that *did* land on the
+  surviving replica (normal leaderless/AP behavior; Phase 6
+  anti-entropy is what eventually reconciles the straggler once it
+  comes back).
 
 ---
 

@@ -5,7 +5,7 @@
   "listen_addr": "127.0.0.1:7001",
   "advertise_addr": "127.0.0.1:7001",
   "seeds": ["127.0.0.1:7002", "127.0.0.1:7003"],
-  "replication_factor": 3,
+  "replication_factor": 2,
   "read_quorum": 2,
   "write_quorum": 2,
   "tablet_split_bytes": 268435456,
@@ -14,6 +14,7 @@
   "ping_timeout": "500ms",
   "suspect_timeout": "5s",
   "dead_timeout": "30s",
+  "replication_timeout": "2s",
   "indirect_ping_fanout": 3,
   "range_map_generation": 1,
   "range_map_replicas": ["node-1", "node-2"]
