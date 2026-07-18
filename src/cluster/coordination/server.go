@@ -1,4 +1,4 @@
-package replication
+package coordination
 
 import (
 	"context"
@@ -11,10 +11,10 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-// Server implements pb.ReplicationServiceServer, translating between
+// Server implements pb.CoordinationServiceServer, translating between
 // the wire protocol and Coordinator's domain-level calls.
 type Server struct {
-	pb.UnimplementedReplicationServiceServer
+	pb.UnimplementedCoordinationServiceServer
 
 	coordinator *Coordinator
 }

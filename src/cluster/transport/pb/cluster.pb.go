@@ -2482,8 +2482,8 @@ const file_cluster_v1_cluster_proto_rawDesc = "" +
 	"\x06Delete\x12\x1f.nosql.cluster.v1.DeleteRequest\x1a\x1f.nosql.cluster.v1.WriteResponse\x12B\n" +
 	"\x03Get\x12\x1c.nosql.cluster.v1.GetRequest\x1a\x1d.nosql.cluster.v1.GetResponse\x12T\n" +
 	"\tRangeScan\x12\".nosql.cluster.v1.RangeScanRequest\x1a#.nosql.cluster.v1.RangeScanResponse\x12K\n" +
-	"\x06Health\x12\x1f.nosql.cluster.v1.HealthRequest\x1a .nosql.cluster.v1.HealthResponse2\xac\x02\n" +
-	"\x12ReplicationService\x12Z\n" +
+	"\x06Health\x12\x1f.nosql.cluster.v1.HealthRequest\x1a .nosql.cluster.v1.HealthResponse2\xad\x02\n" +
+	"\x13CoordinationService\x12Z\n" +
 	"\x03Put\x12'.nosql.cluster.v1.CoordinatedPutRequest\x1a*.nosql.cluster.v1.CoordinatedWriteResponse\x12`\n" +
 	"\x06Delete\x12*.nosql.cluster.v1.CoordinatedDeleteRequest\x1a*.nosql.cluster.v1.CoordinatedWriteResponse\x12X\n" +
 	"\x03Get\x12'.nosql.cluster.v1.CoordinatedGetRequest\x1a(.nosql.cluster.v1.CoordinatedGetResponse2\x82\x02\n" +
@@ -2604,9 +2604,9 @@ var file_cluster_v1_cluster_proto_depIdxs = []int32{
 	10, // 41: nosql.cluster.v1.NodeService.Get:input_type -> nosql.cluster.v1.GetRequest
 	12, // 42: nosql.cluster.v1.NodeService.RangeScan:input_type -> nosql.cluster.v1.RangeScanRequest
 	14, // 43: nosql.cluster.v1.NodeService.Health:input_type -> nosql.cluster.v1.HealthRequest
-	16, // 44: nosql.cluster.v1.ReplicationService.Put:input_type -> nosql.cluster.v1.CoordinatedPutRequest
-	17, // 45: nosql.cluster.v1.ReplicationService.Delete:input_type -> nosql.cluster.v1.CoordinatedDeleteRequest
-	19, // 46: nosql.cluster.v1.ReplicationService.Get:input_type -> nosql.cluster.v1.CoordinatedGetRequest
+	16, // 44: nosql.cluster.v1.CoordinationService.Put:input_type -> nosql.cluster.v1.CoordinatedPutRequest
+	17, // 45: nosql.cluster.v1.CoordinationService.Delete:input_type -> nosql.cluster.v1.CoordinatedDeleteRequest
+	19, // 46: nosql.cluster.v1.CoordinationService.Get:input_type -> nosql.cluster.v1.CoordinatedGetRequest
 	22, // 47: nosql.cluster.v1.GossipService.Gossip:input_type -> nosql.cluster.v1.GossipRequest
 	24, // 48: nosql.cluster.v1.GossipService.Ping:input_type -> nosql.cluster.v1.PingRequest
 	26, // 49: nosql.cluster.v1.GossipService.IndirectPing:input_type -> nosql.cluster.v1.IndirectPingRequest
@@ -2621,9 +2621,9 @@ var file_cluster_v1_cluster_proto_depIdxs = []int32{
 	11, // 58: nosql.cluster.v1.NodeService.Get:output_type -> nosql.cluster.v1.GetResponse
 	13, // 59: nosql.cluster.v1.NodeService.RangeScan:output_type -> nosql.cluster.v1.RangeScanResponse
 	15, // 60: nosql.cluster.v1.NodeService.Health:output_type -> nosql.cluster.v1.HealthResponse
-	18, // 61: nosql.cluster.v1.ReplicationService.Put:output_type -> nosql.cluster.v1.CoordinatedWriteResponse
-	18, // 62: nosql.cluster.v1.ReplicationService.Delete:output_type -> nosql.cluster.v1.CoordinatedWriteResponse
-	20, // 63: nosql.cluster.v1.ReplicationService.Get:output_type -> nosql.cluster.v1.CoordinatedGetResponse
+	18, // 61: nosql.cluster.v1.CoordinationService.Put:output_type -> nosql.cluster.v1.CoordinatedWriteResponse
+	18, // 62: nosql.cluster.v1.CoordinationService.Delete:output_type -> nosql.cluster.v1.CoordinatedWriteResponse
+	20, // 63: nosql.cluster.v1.CoordinationService.Get:output_type -> nosql.cluster.v1.CoordinatedGetResponse
 	23, // 64: nosql.cluster.v1.GossipService.Gossip:output_type -> nosql.cluster.v1.GossipResponse
 	25, // 65: nosql.cluster.v1.GossipService.Ping:output_type -> nosql.cluster.v1.PingResponse
 	27, // 66: nosql.cluster.v1.GossipService.IndirectPing:output_type -> nosql.cluster.v1.IndirectPingResponse

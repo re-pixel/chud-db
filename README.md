@@ -150,21 +150,21 @@ map to actually agree.
 
 ### Coordinated writes/reads (Phase 4 quorum replication)
 
-Every node also serves `ReplicationService` — a client-facing
+Every node also serves `CoordinationService` — a client-facing
 coordinator that any node can run for any key, regardless of whether it
 owns that key itself. This is the direct, visible contrast with the
 hard-reject behavior above: `NodeService.Put` on `node-3` rejects a
-non-owned key outright, but `ReplicationService.Put` on `node-3` for
+non-owned key outright, but `CoordinationService.Put` on `node-3` for
 the very same key succeeds, because the coordinator resolves the real
 owners (`node-1`, `node-2`) from its local range map and fans the write
 out to them over gRPC (`CoordinatedPutRequest`/`CoordinatedGetRequest`
-on `ReplicationService`, e.g. via `grpcurl` or a small Go client using
-`pb.NewReplicationServiceClient`).
+on `CoordinationService`, e.g. via `grpcurl` or a small Go client using
+`pb.NewCoordinationServiceClient`).
 
 With the 3-node cluster above running:
-- `ReplicationService.Put` issued *to node-3* for a new key returns
+- `CoordinationService.Put` issued *to node-3* for a new key returns
   `acks=2 required=2` and lands durably on `node-1` and `node-2` —
-  `ReplicationService.Get` from *any* of the three nodes (including
+  `CoordinationService.Get` from *any* of the three nodes (including
   node-3, which owns nothing) then returns the same value, proving
   replication actually happened rather than each node just having a
   separate, disjoint engine.

@@ -273,177 +273,177 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 }
 
 const (
-	ReplicationService_Put_FullMethodName    = "/nosql.cluster.v1.ReplicationService/Put"
-	ReplicationService_Delete_FullMethodName = "/nosql.cluster.v1.ReplicationService/Delete"
-	ReplicationService_Get_FullMethodName    = "/nosql.cluster.v1.ReplicationService/Get"
+	CoordinationService_Put_FullMethodName    = "/nosql.cluster.v1.CoordinationService/Put"
+	CoordinationService_Delete_FullMethodName = "/nosql.cluster.v1.CoordinationService/Delete"
+	CoordinationService_Get_FullMethodName    = "/nosql.cluster.v1.CoordinationService/Get"
 )
 
-// ReplicationServiceClient is the client API for ReplicationService service.
+// CoordinationServiceClient is the client API for CoordinationService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
-type ReplicationServiceClient interface {
+type CoordinationServiceClient interface {
 	Put(ctx context.Context, in *CoordinatedPutRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error)
 	Delete(ctx context.Context, in *CoordinatedDeleteRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error)
 	Get(ctx context.Context, in *CoordinatedGetRequest, opts ...grpc.CallOption) (*CoordinatedGetResponse, error)
 }
 
-type replicationServiceClient struct {
+type coordinationServiceClient struct {
 	cc grpc.ClientConnInterface
 }
 
-func NewReplicationServiceClient(cc grpc.ClientConnInterface) ReplicationServiceClient {
-	return &replicationServiceClient{cc}
+func NewCoordinationServiceClient(cc grpc.ClientConnInterface) CoordinationServiceClient {
+	return &coordinationServiceClient{cc}
 }
 
-func (c *replicationServiceClient) Put(ctx context.Context, in *CoordinatedPutRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error) {
+func (c *coordinationServiceClient) Put(ctx context.Context, in *CoordinatedPutRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CoordinatedWriteResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_Put_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, CoordinationService_Put_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationServiceClient) Delete(ctx context.Context, in *CoordinatedDeleteRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error) {
+func (c *coordinationServiceClient) Delete(ctx context.Context, in *CoordinatedDeleteRequest, opts ...grpc.CallOption) (*CoordinatedWriteResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CoordinatedWriteResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_Delete_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, CoordinationService_Delete_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *replicationServiceClient) Get(ctx context.Context, in *CoordinatedGetRequest, opts ...grpc.CallOption) (*CoordinatedGetResponse, error) {
+func (c *coordinationServiceClient) Get(ctx context.Context, in *CoordinatedGetRequest, opts ...grpc.CallOption) (*CoordinatedGetResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(CoordinatedGetResponse)
-	err := c.cc.Invoke(ctx, ReplicationService_Get_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, CoordinationService_Get_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-// ReplicationServiceServer is the server API for ReplicationService service.
-// All implementations must embed UnimplementedReplicationServiceServer
+// CoordinationServiceServer is the server API for CoordinationService service.
+// All implementations must embed UnimplementedCoordinationServiceServer
 // for forward compatibility.
-type ReplicationServiceServer interface {
+type CoordinationServiceServer interface {
 	Put(context.Context, *CoordinatedPutRequest) (*CoordinatedWriteResponse, error)
 	Delete(context.Context, *CoordinatedDeleteRequest) (*CoordinatedWriteResponse, error)
 	Get(context.Context, *CoordinatedGetRequest) (*CoordinatedGetResponse, error)
-	mustEmbedUnimplementedReplicationServiceServer()
+	mustEmbedUnimplementedCoordinationServiceServer()
 }
 
-// UnimplementedReplicationServiceServer must be embedded to have
+// UnimplementedCoordinationServiceServer must be embedded to have
 // forward compatible implementations.
 //
 // NOTE: this should be embedded by value instead of pointer to avoid a nil
 // pointer dereference when methods are called.
-type UnimplementedReplicationServiceServer struct{}
+type UnimplementedCoordinationServiceServer struct{}
 
-func (UnimplementedReplicationServiceServer) Put(context.Context, *CoordinatedPutRequest) (*CoordinatedWriteResponse, error) {
+func (UnimplementedCoordinationServiceServer) Put(context.Context, *CoordinatedPutRequest) (*CoordinatedWriteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Put not implemented")
 }
-func (UnimplementedReplicationServiceServer) Delete(context.Context, *CoordinatedDeleteRequest) (*CoordinatedWriteResponse, error) {
+func (UnimplementedCoordinationServiceServer) Delete(context.Context, *CoordinatedDeleteRequest) (*CoordinatedWriteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
 }
-func (UnimplementedReplicationServiceServer) Get(context.Context, *CoordinatedGetRequest) (*CoordinatedGetResponse, error) {
+func (UnimplementedCoordinationServiceServer) Get(context.Context, *CoordinatedGetRequest) (*CoordinatedGetResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Get not implemented")
 }
-func (UnimplementedReplicationServiceServer) mustEmbedUnimplementedReplicationServiceServer() {}
-func (UnimplementedReplicationServiceServer) testEmbeddedByValue()                            {}
+func (UnimplementedCoordinationServiceServer) mustEmbedUnimplementedCoordinationServiceServer() {}
+func (UnimplementedCoordinationServiceServer) testEmbeddedByValue()                             {}
 
-// UnsafeReplicationServiceServer may be embedded to opt out of forward compatibility for this service.
-// Use of this interface is not recommended, as added methods to ReplicationServiceServer will
+// UnsafeCoordinationServiceServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to CoordinationServiceServer will
 // result in compilation errors.
-type UnsafeReplicationServiceServer interface {
-	mustEmbedUnimplementedReplicationServiceServer()
+type UnsafeCoordinationServiceServer interface {
+	mustEmbedUnimplementedCoordinationServiceServer()
 }
 
-func RegisterReplicationServiceServer(s grpc.ServiceRegistrar, srv ReplicationServiceServer) {
-	// If the following call panics, it indicates UnimplementedReplicationServiceServer was
+func RegisterCoordinationServiceServer(s grpc.ServiceRegistrar, srv CoordinationServiceServer) {
+	// If the following call panics, it indicates UnimplementedCoordinationServiceServer was
 	// embedded by pointer and is nil.  This will cause panics if an
 	// unimplemented method is ever invoked, so we test this at initialization
 	// time to prevent it from happening at runtime later due to I/O.
 	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
 		t.testEmbeddedByValue()
 	}
-	s.RegisterService(&ReplicationService_ServiceDesc, srv)
+	s.RegisterService(&CoordinationService_ServiceDesc, srv)
 }
 
-func _ReplicationService_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _CoordinationService_Put_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CoordinatedPutRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).Put(ctx, in)
+		return srv.(CoordinationServiceServer).Put(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_Put_FullMethodName,
+		FullMethod: CoordinationService_Put_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).Put(ctx, req.(*CoordinatedPutRequest))
+		return srv.(CoordinationServiceServer).Put(ctx, req.(*CoordinatedPutRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ReplicationService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _CoordinationService_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CoordinatedDeleteRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).Delete(ctx, in)
+		return srv.(CoordinationServiceServer).Delete(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_Delete_FullMethodName,
+		FullMethod: CoordinationService_Delete_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).Delete(ctx, req.(*CoordinatedDeleteRequest))
+		return srv.(CoordinationServiceServer).Delete(ctx, req.(*CoordinatedDeleteRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _ReplicationService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+func _CoordinationService_Get_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(CoordinatedGetRequest)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(ReplicationServiceServer).Get(ctx, in)
+		return srv.(CoordinationServiceServer).Get(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: ReplicationService_Get_FullMethodName,
+		FullMethod: CoordinationService_Get_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(ReplicationServiceServer).Get(ctx, req.(*CoordinatedGetRequest))
+		return srv.(CoordinationServiceServer).Get(ctx, req.(*CoordinatedGetRequest))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-// ReplicationService_ServiceDesc is the grpc.ServiceDesc for ReplicationService service.
+// CoordinationService_ServiceDesc is the grpc.ServiceDesc for CoordinationService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
-var ReplicationService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "nosql.cluster.v1.ReplicationService",
-	HandlerType: (*ReplicationServiceServer)(nil),
+var CoordinationService_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "nosql.cluster.v1.CoordinationService",
+	HandlerType: (*CoordinationServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
 			MethodName: "Put",
-			Handler:    _ReplicationService_Put_Handler,
+			Handler:    _CoordinationService_Put_Handler,
 		},
 		{
 			MethodName: "Delete",
-			Handler:    _ReplicationService_Delete_Handler,
+			Handler:    _CoordinationService_Delete_Handler,
 		},
 		{
 			MethodName: "Get",
-			Handler:    _ReplicationService_Get_Handler,
+			Handler:    _CoordinationService_Get_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

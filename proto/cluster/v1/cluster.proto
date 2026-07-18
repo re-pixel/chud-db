@@ -237,7 +237,7 @@ service NodeService {
   rpc Health(HealthRequest) returns (HealthResponse);
 }
 
-service ReplicationService {
+service CoordinationService {
   rpc Put(CoordinatedPutRequest) returns (CoordinatedWriteResponse);
   rpc Delete(CoordinatedDeleteRequest) returns (CoordinatedWriteResponse);
   rpc Get(CoordinatedGetRequest) returns (CoordinatedGetResponse);

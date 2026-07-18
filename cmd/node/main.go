@@ -11,9 +11,9 @@ import (
 	"time"
 
 	clusterconfig "nosqlEngine/src/cluster/config"
+	clustercoordination "nosqlEngine/src/cluster/coordination"
 	clustermembership "nosqlEngine/src/cluster/membership"
 	clusternode "nosqlEngine/src/cluster/node"
-	clusterreplication "nosqlEngine/src/cluster/replication"
 	clusterring "nosqlEngine/src/cluster/ring"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/engine"
@@ -94,28 +94,28 @@ func run() error {
 		clusterring.SyncerConfig{Interval: cfg.GossipInterval, PullTimeout: cfg.PingTimeout},
 	)
 
-	replicationClient := clusterreplication.NewClient()
-	defer replicationClient.Close() //nolint:errcheck
+	coordinationClient := clustercoordination.NewClient()
+	defer coordinationClient.Close() //nolint:errcheck
 
-	coordinator := clusterreplication.NewCoordinator(
+	coordinator := clustercoordination.NewCoordinator(
 		cfg.NodeID,
 		ringTable,
 		membershipAddressResolver{table},
-		replicationClient,
+		coordinationClient,
 		store,
-		clusterreplication.Config{
+		clustercoordination.Config{
 			ReplicationTimeout: cfg.ReplicationTimeout,
 			ReadQuorum:         cfg.ReadQuorum,
 			WriteQuorum:        cfg.WriteQuorum,
 		},
 	)
-	replicationServer := clusterreplication.NewServer(coordinator)
+	coordinationServer := clustercoordination.NewServer(coordinator)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterNodeServiceServer(grpcServer, nodeServer)
 	pb.RegisterGossipServiceServer(grpcServer, gossipServer)
 	pb.RegisterRangeMapServiceServer(grpcServer, ringServer)
-	pb.RegisterReplicationServiceServer(grpcServer, replicationServer)
+	pb.RegisterCoordinationServiceServer(grpcServer, coordinationServer)
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -176,8 +176,8 @@ func (m membershipPeerEpochs) PeerEpochs() []clusterring.PeerEpoch {
 }
 
 // membershipAddressResolver adapts a membership.Table into the
-// clusterreplication.AddressResolver the Coordinator needs, without
-// making the replication package depend on membership.
+// clustercoordination.AddressResolver the Coordinator needs, without
+// making the coordination package depend on membership.
 type membershipAddressResolver struct {
 	table *clustermembership.Table
 }
