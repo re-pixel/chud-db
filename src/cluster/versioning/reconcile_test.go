@@ -139,6 +139,30 @@ func TestPickByTimestampTieBreakIsDeterministic(t *testing.T) {
 	}
 }
 
+func TestReconcileContextEqualsWinnerClock(t *testing.T) {
+	oldValue := NewPut(VectorClock{"node-a": 1}, "old", time.Unix(0, 1))
+	newValue := NewPut(VectorClock{"node-a": 2}, "new", time.Unix(0, 2))
+
+	result := Reconcile([]Envelope{oldValue, newValue})
+
+	if Compare(result.Context, VectorClock{"node-a": 2}) != Equal {
+		t.Fatalf("context = %#v, want winner's clock", result.Context)
+	}
+}
+
+func TestReconcileContextMergesAllSiblingClocks(t *testing.T) {
+	left := NewPut(VectorClock{"node-a": 1}, "left", time.Unix(0, 1))
+	right := NewPut(VectorClock{"node-b": 1}, "right", time.Unix(0, 2))
+
+	result := Reconcile([]Envelope{left, right})
+
+	for _, sibling := range result.Siblings {
+		if Compare(sibling.VectorClock, result.Context) != Before {
+			t.Fatalf("context %#v does not dominate sibling clock %#v", result.Context, sibling.VectorClock)
+		}
+	}
+}
+
 func TestReconcileClonesWinner(t *testing.T) {
 	value := NewPut(VectorClock{"node-a": 1}, "value", time.Unix(0, 1))
 	result := Reconcile([]Envelope{value})

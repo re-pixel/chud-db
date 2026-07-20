@@ -8,6 +8,7 @@ import (
 type ReconcileResult struct {
 	Winner   *Envelope
 	Siblings []Envelope
+	Context  VectorClock
 }
 
 func Reconcile(values []Envelope) ReconcileResult {
@@ -39,11 +40,16 @@ func Reconcile(values []Envelope) ReconcileResult {
 		}
 	}
 
+	context := VectorClock{}
+	for _, envelope := range nonDominated {
+		context = Merge(context, envelope.VectorClock)
+	}
+
 	if len(nonDominated) == 1 {
 		winner := nonDominated[0]
-		return ReconcileResult{Winner: &winner}
+		return ReconcileResult{Winner: &winner, Context: context}
 	}
-	return ReconcileResult{Siblings: nonDominated}
+	return ReconcileResult{Siblings: nonDominated, Context: context}
 }
 
 func PickByTimestamp(values []Envelope) Envelope {
