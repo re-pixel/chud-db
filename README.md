@@ -112,7 +112,7 @@ dropTombstones = isLastLevel &&
 
 ---
 
-## Cluster node (early distribution layer)
+## Cluster node (distribution layer)
 
 `cmd/node` boots a single cluster node: the storage engine, a gRPC `NodeService` (read/write) and `GossipService` (SWIM membership) endpoint, and a background gossiper that discovers peers and detects failures.
 
@@ -134,7 +134,7 @@ go build -o bin/nosql-node ./cmd/node
 ./bin/nosql-node -config examples/cluster/node-3.json
 ```
 
-Within a couple of `gossip_interval` ticks each node's membership table converges to all three nodes marked `alive`. Membership is in-memory only (v1) — restart a node and it re-bootstraps from the seed list.
+Within a couple of `gossip_interval` ticks each node's membership table converges to all three nodes marked `alive`. Membership is in-memory only — restart a node and it re-bootstraps from the seed list.
 
 The three example configs also carry a static, matching range map
 (`range_map_generation: 1`, `range_map_replicas: ["node-1", "node-2"]`,
@@ -144,11 +144,11 @@ the three nodes returns the identical single global range
 `["", "") -> [node-1, node-2]`, and `node-3` — deliberately left out of
 the replica list — rejects `NodeService.Put`/`Get`/`RangeScan` with
 `FailedPrecondition`, while `node-1`/`node-2` serve them normally. Range
-map propagation in Phase 3 is config-driven only (no live mutation
-yet), so all three files must list the same generation/replicas for the
-map to actually agree.
+map propagation is config-driven only today (no live mutation yet), so
+all three files must list the same generation/replicas for the map to
+actually agree.
 
-### Coordinated writes/reads (Phase 4 quorum replication)
+### Coordinated writes/reads (quorum replication)
 
 Every node also serves `CoordinationService` — a client-facing
 coordinator that any node can run for any key, regardless of whether it
@@ -173,9 +173,38 @@ With the 3-node cluster above running:
   remaining owner acking), while the same `Put` with `write_quorum=2`
   fails with `codes.Unavailable` ("got 1/2 acks") — demonstrating quorum
   degradation without any rollback of the write that *did* land on the
-  surviving replica (normal leaderless/AP behavior; Phase 6
-  anti-entropy is what eventually reconciles the straggler once it
-  comes back).
+  surviving replica (normal leaderless/AP behavior; anti-entropy
+  reconciliation is what eventually catches the straggler back up once
+  it returns).
+
+### Conflict resolution
+
+`CoordinatedGetResponse` returns a `versions` list rather than a single
+value: empty means not found, one entry means every replica the read
+heard from agreed (check that entry's own `deleted` flag — tombstones
+are returned as a version, not hidden as "not found"), and two or more
+entries means the replicas hold genuinely concurrent writes that
+`versioning.Reconcile` could not causally order. The coordinator never
+picks a winner on the caller's behalf; resolving siblings — e.g.
+merging values, or just picking one — is left to the client. The
+response's top-level `vector_clock` is the causal join of every
+returned version, safe to hand back as the `context` of a follow-up
+`Put` so that write dominates everything the client just saw.
+
+To reproduce a genuine conflict on the 3-node cluster above (the
+underlying engine stores one value per key per replica, so siblings
+only arise when *different* replicas end up holding *different*
+concurrent versions):
+
+1. Kill `node-2`. `Put` a key via `node-1` with `write_quorum=1` and no
+   context — it lands only on `node-1` with clock `{node-1: 1}`.
+2. Restart `node-2`, then kill `node-1`. `Put` the *same key* via
+   `node-2` with `write_quorum=1` and no context — it lands only on
+   `node-2` with clock `{node-2: 1}`.
+3. Restart `node-1`. `Get` the key from any node — neither clock
+   dominates the other, so the response's `versions` list has exactly
+   2 entries, one per replica, and `vector_clock` merges both
+   (`{node-1: 1, node-2: 1}`).
 
 ---
 
