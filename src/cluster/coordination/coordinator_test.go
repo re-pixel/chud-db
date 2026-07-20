@@ -229,20 +229,20 @@ func TestCoordinatorGetReturnsCleanWinnerWhenAllReplicasAgree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if !result.Found || result.Value != "value" || result.HadConflict {
+	if len(result.Versions) != 1 || result.Versions[0].Value != "value" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 
-func TestCoordinatorGetResolvesConcurrentSiblingsViaPickByTimestamp(t *testing.T) {
+func TestCoordinatorGetReturnsConcurrentSiblingsToCaller(t *testing.T) {
 	owners := fakeOwners{owners: []string{"node-1", "node-2"}}
 	addresses := fakeAddresses{addrs: map[string]string{"node-1": "10.0.0.1:7000", "node-2": "10.0.0.2:7000"}}
 	replicas := newFakeReplicaClient()
 
-	older := versioning.NewPut(versioning.VectorClock{"node-1": 1}, "older", time.Now().Add(-time.Minute))
-	newer := versioning.NewPut(versioning.VectorClock{"node-2": 1}, "newer", time.Now())
-	replicas.getByAddr["10.0.0.1:7000"] = storedEnvelope{envelope: older, found: true}
-	replicas.getByAddr["10.0.0.2:7000"] = storedEnvelope{envelope: newer, found: true}
+	left := versioning.NewPut(versioning.VectorClock{"node-1": 1}, "left", time.Now().Add(-time.Minute))
+	right := versioning.NewPut(versioning.VectorClock{"node-2": 1}, "right", time.Now())
+	replicas.getByAddr["10.0.0.1:7000"] = storedEnvelope{envelope: left, found: true}
+	replicas.getByAddr["10.0.0.2:7000"] = storedEnvelope{envelope: right, found: true}
 	local := &fakeLocalStore{}
 
 	coord := NewCoordinator("coordinator", owners, addresses, replicas, local, testConfig())
@@ -251,11 +251,50 @@ func TestCoordinatorGetResolvesConcurrentSiblingsViaPickByTimestamp(t *testing.T
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if !result.HadConflict {
-		t.Fatalf("expected concurrent siblings to be flagged as conflict: %+v", result)
+	if len(result.Versions) != 2 {
+		t.Fatalf("expected both concurrent siblings surfaced, got %+v", result)
 	}
-	if !result.Found || result.Value != "newer" {
-		t.Fatalf("expected PickByTimestamp to pick the newer sibling, got %+v", result)
+	values := map[string]bool{result.Versions[0].Value: true, result.Versions[1].Value: true}
+	if !values["left"] || !values["right"] {
+		t.Fatalf("expected both sibling values present, got %+v", result.Versions)
+	}
+	for _, version := range result.Versions {
+		if versioning.Compare(version.VectorClock, result.VectorClock) != versioning.Before {
+			t.Fatalf("merged context %+v does not dominate sibling clock %+v", result.VectorClock, version.VectorClock)
+		}
+	}
+}
+
+func TestCoordinatorGetSurfacesConcurrentPutAndDeleteAsBothVersions(t *testing.T) {
+	owners := fakeOwners{owners: []string{"node-1", "node-2"}}
+	addresses := fakeAddresses{addrs: map[string]string{"node-1": "10.0.0.1:7000", "node-2": "10.0.0.2:7000"}}
+	replicas := newFakeReplicaClient()
+
+	tombstone := versioning.NewDelete(versioning.VectorClock{"node-1": 1}, time.Now())
+	put := versioning.NewPut(versioning.VectorClock{"node-2": 1}, "value", time.Now())
+	replicas.getByAddr["10.0.0.1:7000"] = storedEnvelope{envelope: tombstone, found: true}
+	replicas.getByAddr["10.0.0.2:7000"] = storedEnvelope{envelope: put, found: true}
+	local := &fakeLocalStore{}
+
+	coord := NewCoordinator("coordinator", owners, addresses, replicas, local, testConfig())
+
+	result, err := coord.Get(context.Background(), "key", 0)
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(result.Versions) != 2 {
+		t.Fatalf("expected both the tombstone and the concurrent put surfaced, got %+v", result)
+	}
+	sawDeleted, sawLive := false, false
+	for _, version := range result.Versions {
+		if version.Deleted {
+			sawDeleted = true
+		} else {
+			sawLive = true
+		}
+	}
+	if !sawDeleted || !sawLive {
+		t.Fatalf("expected one deleted and one live version, got %+v", result.Versions)
 	}
 }
 
@@ -274,7 +313,7 @@ func TestCoordinatorGetTreatsReplicaRejectionAsFailedAckNotCrash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if !result.Found || result.Value != "value" {
+	if len(result.Versions) != 1 || result.Versions[0].Value != "value" {
 		t.Fatalf("unexpected result: %+v", result)
 	}
 }
@@ -308,12 +347,12 @@ func TestCoordinatorGetReturnsNotFoundWhenNoReplicaHasKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if result.Found {
+	if len(result.Versions) != 0 {
 		t.Fatalf("expected not found, got %+v", result)
 	}
 }
 
-func TestCoordinatorGetTranslatesDeletedWinnerToNotFound(t *testing.T) {
+func TestCoordinatorGetSurfacesDeletedWinnerAsDeletedVersion(t *testing.T) {
 	owners := fakeOwners{owners: []string{"node-1", "node-2"}}
 	addresses := fakeAddresses{addrs: map[string]string{"node-1": "10.0.0.1:7000", "node-2": "10.0.0.2:7000"}}
 	replicas := newFakeReplicaClient()
@@ -328,8 +367,8 @@ func TestCoordinatorGetTranslatesDeletedWinnerToNotFound(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if result.Found {
-		t.Fatalf("expected deleted key to surface as not found, got %+v", result)
+	if len(result.Versions) != 1 || !result.Versions[0].Deleted {
+		t.Fatalf("expected deleted key to surface as a single deleted version, got %+v", result)
 	}
 	if result.VectorClock["node-1"] != 2 {
 		t.Fatalf("expected tombstone's vector clock preserved as next context, got %+v", result.VectorClock)

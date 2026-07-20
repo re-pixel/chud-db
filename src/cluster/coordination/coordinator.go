@@ -69,15 +69,18 @@ type WriteResult struct {
 	Required    int
 }
 
-// ReadResult reports the outcome of a coordinated Get. VectorClock is
-// populated even when Found is false (deleted key), so the client can
-// hand it back as the causality context of a subsequent write. See
-// Coordinator.Get for the Deleted->Found=false translation rationale.
+// ReadResult reports the outcome of a coordinated Get. Versions is
+// empty when the key isn't found, holds one entry when the replicas
+// agree (or agree modulo causal ordering), and holds two or more
+// entries when genuine concurrent siblings were found - the caller
+// must resolve those itself. Callers inspect each version's own
+// Deleted flag directly; the server no longer hides tombstones behind
+// a "not found" result. VectorClock is the causal join of every
+// returned version, safe to hand back as the context of a subsequent
+// write so it dominates everything the caller was just shown.
 type ReadResult struct {
-	Found       bool
-	Value       string
+	Versions    []versioning.Envelope
 	VectorClock versioning.VectorClock
-	HadConflict bool
 }
 
 // Coordinator implements the leaderless quorum write/read path: any
@@ -147,12 +150,10 @@ func (c *Coordinator) Delete(ctx context.Context, key string, clockContext versi
 	return c.writeResult(newClock, acks, quorum, key, "delete")
 }
 
-// Get fans a read out to every owner of key, reconciles the returned
-// versions via versioning.Reconcile, and falls back to
-// versioning.PickByTimestamp (setting HadConflict) when genuine
-// concurrent siblings are found. Full sibling exposure to the client is
-// deferred to Phase 5; this phase only surfaces that a conflict
-// happened and which version won.
+// Get fans a read out to every owner of key and reconciles the
+// returned versions via versioning.Reconcile. Genuine concurrent
+// siblings are returned to the caller as-is rather than silently
+// collapsed - conflict resolution is the caller's responsibility.
 func (c *Coordinator) Get(ctx context.Context, key string, requestedQuorum int) (ReadResult, error) {
 	if key == "" {
 		return ReadResult{}, invalidRequestf("key must not be empty")
@@ -190,20 +191,10 @@ func (c *Coordinator) Get(ctx context.Context, key string, requestedQuorum int) 
 	}
 
 	reconciled := versioning.Reconcile(found)
-	final := versioning.Envelope{}
-	hadConflict := false
 	if reconciled.Winner != nil {
-		final = *reconciled.Winner
-	} else {
-		final = versioning.PickByTimestamp(reconciled.Siblings)
-		hadConflict = true
+		return ReadResult{Versions: []versioning.Envelope{*reconciled.Winner}, VectorClock: reconciled.Context}, nil
 	}
-	return ReadResult{
-		Found:       !final.Deleted,
-		Value:       final.Value,
-		VectorClock: final.VectorClock,
-		HadConflict: hadConflict,
-	}, nil
+	return ReadResult{Versions: reconciled.Siblings, VectorClock: reconciled.Context}, nil
 }
 
 func (c *Coordinator) resolveWriteQuorum(key string, requestedQuorum int) ([]string, int, error) {
