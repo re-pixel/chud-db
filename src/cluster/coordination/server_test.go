@@ -101,14 +101,14 @@ func TestServerDeletePassesThroughContextAndQuorum(t *testing.T) {
 	}
 }
 
-func TestServerGetReturnsFoundValueAndConflictFlag(t *testing.T) {
+func TestServerGetReturnsSingleResolvedVersion(t *testing.T) {
 	owners := fakeOwners{owners: []string{"node-1", "node-2"}}
 	addresses := fakeAddresses{addrs: map[string]string{"node-1": "10.0.0.1:7000", "node-2": "10.0.0.2:7000"}}
 	replicas := newFakeReplicaClient()
-	older := versioning.NewPut(versioning.VectorClock{"node-1": 1}, "older", time.Now().Add(-time.Minute))
-	newer := versioning.NewPut(versioning.VectorClock{"node-2": 1}, "newer", time.Now())
-	replicas.getByAddr["10.0.0.1:7000"] = storedEnvelope{envelope: older, found: true}
-	replicas.getByAddr["10.0.0.2:7000"] = storedEnvelope{envelope: newer, found: true}
+	older := versioning.NewPut(versioning.VectorClock{"node-1": 1}, "value", time.Now().Add(-time.Minute))
+	newer := versioning.NewPut(versioning.VectorClock{"node-1": 2}, "value", time.Now())
+	replicas.getByAddr["10.0.0.1:7000"] = storedEnvelope{envelope: newer, found: true}
+	replicas.getByAddr["10.0.0.2:7000"] = storedEnvelope{envelope: older, found: true}
 	coord := NewCoordinator("coordinator", owners, addresses, replicas, &fakeLocalStore{}, testConfig())
 	server := NewServer(coord)
 
@@ -116,12 +116,39 @@ func TestServerGetReturnsFoundValueAndConflictFlag(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if !resp.GetFound() || resp.GetValue() != "newer" || !resp.GetHadConflict() {
+	if len(resp.GetVersions()) != 1 || resp.GetVersions()[0].GetValue() != "value" {
 		t.Fatalf("unexpected response: %+v", resp)
 	}
 }
 
-func TestServerGetReturnsNotFoundWithoutValue(t *testing.T) {
+func TestServerGetReturnsConcurrentSiblingsAsMultipleVersions(t *testing.T) {
+	owners := fakeOwners{owners: []string{"node-1", "node-2"}}
+	addresses := fakeAddresses{addrs: map[string]string{"node-1": "10.0.0.1:7000", "node-2": "10.0.0.2:7000"}}
+	replicas := newFakeReplicaClient()
+	left := versioning.NewPut(versioning.VectorClock{"node-1": 1}, "left", time.Now().Add(-time.Minute))
+	right := versioning.NewPut(versioning.VectorClock{"node-2": 1}, "right", time.Now())
+	replicas.getByAddr["10.0.0.1:7000"] = storedEnvelope{envelope: left, found: true}
+	replicas.getByAddr["10.0.0.2:7000"] = storedEnvelope{envelope: right, found: true}
+	coord := NewCoordinator("coordinator", owners, addresses, replicas, &fakeLocalStore{}, testConfig())
+	server := NewServer(coord)
+
+	resp, err := server.Get(context.Background(), &pb.CoordinatedGetRequest{Key: "key"})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if len(resp.GetVersions()) != 2 {
+		t.Fatalf("expected both concurrent siblings surfaced, got %+v", resp)
+	}
+	values := map[string]bool{}
+	for _, version := range resp.GetVersions() {
+		values[version.GetValue()] = true
+	}
+	if !values["left"] || !values["right"] {
+		t.Fatalf("expected both sibling values present, got %+v", resp.GetVersions())
+	}
+}
+
+func TestServerGetReturnsNotFoundAsEmptyVersions(t *testing.T) {
 	owners := fakeOwners{owners: []string{"node-1"}}
 	addresses := fakeAddresses{addrs: map[string]string{"node-1": "10.0.0.1:7000"}}
 	coord := NewCoordinator("coordinator", owners, addresses, newFakeReplicaClient(), &fakeLocalStore{}, testConfig())
@@ -131,8 +158,8 @@ func TestServerGetReturnsNotFoundWithoutValue(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get: %v", err)
 	}
-	if resp.GetFound() || resp.GetValue() != "" {
-		t.Fatalf("expected not found with empty value, got %+v", resp)
+	if len(resp.GetVersions()) != 0 {
+		t.Fatalf("expected empty versions for not found, got %+v", resp)
 	}
 }
 

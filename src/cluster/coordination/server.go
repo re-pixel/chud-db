@@ -65,16 +65,15 @@ func (s *Server) Get(ctx context.Context, req *pb.CoordinatedGetRequest) (*pb.Co
 	if err != nil {
 		return nil, statusError(err)
 	}
-	resp := &pb.CoordinatedGetResponse{
+	versions := make([]*pb.Envelope, 0, len(result.Versions))
+	for _, version := range result.Versions {
+		versions = append(versions, transport.EnvelopeToProto(version))
+	}
+	return &pb.CoordinatedGetResponse{
 		Status:      transport.OKStatus(),
-		Found:       result.Found,
+		Versions:    versions,
 		VectorClock: transport.VectorClockToProto(result.VectorClock),
-		HadConflict: result.HadConflict,
-	}
-	if result.Found {
-		resp.Value = result.Value
-	}
-	return resp, nil
+	}, nil
 }
 
 // statusError classifies InvalidRequestError (empty key, an impossible
