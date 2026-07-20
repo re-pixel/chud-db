@@ -12,72 +12,84 @@ import (
 const envPrefix = "NOSQL_CLUSTER_"
 
 type Config struct {
-	NodeID              string        `json:"node_id"`
-	ClusterID           string        `json:"cluster_id"`
-	DataDir             string        `json:"data_dir"`
-	ListenAddr          string        `json:"listen_addr"`
-	AdvertiseAddr       string        `json:"advertise_addr"`
-	Seeds               []string      `json:"seeds"`
-	ReplicationFactor   int           `json:"replication_factor"`
-	ReadQuorum          int           `json:"read_quorum"`
-	WriteQuorum         int           `json:"write_quorum"`
-	TabletSplitBytes    int64         `json:"tablet_split_bytes"`
-	TabletMergeBytes    int64         `json:"tablet_merge_bytes"`
-	AntiEntropyInterval time.Duration `json:"-"`
-	GossipInterval      time.Duration `json:"-"`
-	PingTimeout         time.Duration `json:"-"`
-	SuspectTimeout      time.Duration `json:"-"`
-	DeadTimeout         time.Duration `json:"-"`
-	ReplicationTimeout  time.Duration `json:"-"`
-	IndirectPingFanout  int           `json:"indirect_ping_fanout"`
-	RangeMapGeneration  uint64        `json:"range_map_generation"`
-	RangeMapReplicas    []string      `json:"range_map_replicas"`
+	NodeID                       string        `json:"node_id"`
+	ClusterID                    string        `json:"cluster_id"`
+	DataDir                      string        `json:"data_dir"`
+	ListenAddr                   string        `json:"listen_addr"`
+	AdvertiseAddr                string        `json:"advertise_addr"`
+	Seeds                        []string      `json:"seeds"`
+	ReplicationFactor            int           `json:"replication_factor"`
+	ReadQuorum                   int           `json:"read_quorum"`
+	WriteQuorum                  int           `json:"write_quorum"`
+	TabletSplitBytes             int64         `json:"tablet_split_bytes"`
+	TabletMergeBytes             int64         `json:"tablet_merge_bytes"`
+	AntiEntropyInterval          time.Duration `json:"-"`
+	AntiEntropyTimeout           time.Duration `json:"-"`
+	AntiEntropyFanout            int           `json:"anti_entropy_fanout"`
+	AntiEntropyLeafItemThreshold int           `json:"anti_entropy_leaf_item_threshold"`
+	AntiEntropyMaxDepth          int           `json:"anti_entropy_max_depth"`
+	GossipInterval               time.Duration `json:"-"`
+	PingTimeout                  time.Duration `json:"-"`
+	SuspectTimeout               time.Duration `json:"-"`
+	DeadTimeout                  time.Duration `json:"-"`
+	ReplicationTimeout           time.Duration `json:"-"`
+	IndirectPingFanout           int           `json:"indirect_ping_fanout"`
+	RangeMapGeneration           uint64        `json:"range_map_generation"`
+	RangeMapReplicas             []string      `json:"range_map_replicas"`
 }
 
 type fileConfig struct {
-	NodeID              *string  `json:"node_id"`
-	ClusterID           *string  `json:"cluster_id"`
-	DataDir             *string  `json:"data_dir"`
-	ListenAddr          *string  `json:"listen_addr"`
-	AdvertiseAddr       *string  `json:"advertise_addr"`
-	Seeds               []string `json:"seeds"`
-	ReplicationFactor   *int     `json:"replication_factor"`
-	ReadQuorum          *int     `json:"read_quorum"`
-	WriteQuorum         *int     `json:"write_quorum"`
-	TabletSplitBytes    *int64   `json:"tablet_split_bytes"`
-	TabletMergeBytes    *int64   `json:"tablet_merge_bytes"`
-	AntiEntropyInterval *string  `json:"anti_entropy_interval"`
-	GossipInterval      *string  `json:"gossip_interval"`
-	PingTimeout         *string  `json:"ping_timeout"`
-	SuspectTimeout      *string  `json:"suspect_timeout"`
-	DeadTimeout         *string  `json:"dead_timeout"`
-	ReplicationTimeout  *string  `json:"replication_timeout"`
-	IndirectPingFanout  *int     `json:"indirect_ping_fanout"`
-	RangeMapGeneration  *uint64  `json:"range_map_generation"`
-	RangeMapReplicas    []string `json:"range_map_replicas"`
+	NodeID                       *string  `json:"node_id"`
+	ClusterID                    *string  `json:"cluster_id"`
+	DataDir                      *string  `json:"data_dir"`
+	ListenAddr                   *string  `json:"listen_addr"`
+	AdvertiseAddr                *string  `json:"advertise_addr"`
+	Seeds                        []string `json:"seeds"`
+	ReplicationFactor            *int     `json:"replication_factor"`
+	ReadQuorum                   *int     `json:"read_quorum"`
+	WriteQuorum                  *int     `json:"write_quorum"`
+	TabletSplitBytes             *int64   `json:"tablet_split_bytes"`
+	TabletMergeBytes             *int64   `json:"tablet_merge_bytes"`
+	AntiEntropyInterval          *string  `json:"anti_entropy_interval"`
+	AntiEntropyTimeout           *string  `json:"anti_entropy_timeout"`
+	AntiEntropyFanout            *int     `json:"anti_entropy_fanout"`
+	AntiEntropyLeafItemThreshold *int     `json:"anti_entropy_leaf_item_threshold"`
+	AntiEntropyMaxDepth          *int     `json:"anti_entropy_max_depth"`
+	GossipInterval               *string  `json:"gossip_interval"`
+	PingTimeout                  *string  `json:"ping_timeout"`
+	SuspectTimeout               *string  `json:"suspect_timeout"`
+	DeadTimeout                  *string  `json:"dead_timeout"`
+	ReplicationTimeout           *string  `json:"replication_timeout"`
+	IndirectPingFanout           *int     `json:"indirect_ping_fanout"`
+	RangeMapGeneration           *uint64  `json:"range_map_generation"`
+	RangeMapReplicas             []string `json:"range_map_replicas"`
 }
 
 func DefaultConfig() Config {
 	return Config{
-		NodeID:              "node-1",
-		ClusterID:           "nosql-cluster",
-		DataDir:             "data/cluster/node-1",
-		ListenAddr:          "0.0.0.0:7000",
-		AdvertiseAddr:       "127.0.0.1:7000",
-		Seeds:               nil,
-		ReplicationFactor:   3,
-		ReadQuorum:          2,
-		WriteQuorum:         2,
-		TabletSplitBytes:    256 << 20,
-		TabletMergeBytes:    64 << 20,
-		AntiEntropyInterval: time.Minute,
-		GossipInterval:      time.Second,
-		PingTimeout:         500 * time.Millisecond,
-		SuspectTimeout:      5 * time.Second,
-		DeadTimeout:         30 * time.Second,
-		ReplicationTimeout:  2 * time.Second,
-		IndirectPingFanout:  3,
-		RangeMapGeneration:  1,
+		NodeID:                       "node-1",
+		ClusterID:                    "nosql-cluster",
+		DataDir:                      "data/cluster/node-1",
+		ListenAddr:                   "0.0.0.0:7000",
+		AdvertiseAddr:                "127.0.0.1:7000",
+		Seeds:                        nil,
+		ReplicationFactor:            3,
+		ReadQuorum:                   2,
+		WriteQuorum:                  2,
+		TabletSplitBytes:             256 << 20,
+		TabletMergeBytes:             64 << 20,
+		AntiEntropyInterval:          time.Minute,
+		AntiEntropyTimeout:           5 * time.Second,
+		AntiEntropyFanout:            4,
+		AntiEntropyLeafItemThreshold: 32,
+		AntiEntropyMaxDepth:          6,
+		GossipInterval:               time.Second,
+		PingTimeout:                  500 * time.Millisecond,
+		SuspectTimeout:               5 * time.Second,
+		DeadTimeout:                  30 * time.Second,
+		ReplicationTimeout:           2 * time.Second,
+		IndirectPingFanout:           3,
+		RangeMapGeneration:           1,
 	}
 }
 
@@ -139,6 +151,18 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.AntiEntropyInterval <= 0 {
 		return fmt.Errorf("anti_entropy_interval must be > 0")
+	}
+	if cfg.AntiEntropyTimeout <= 0 {
+		return fmt.Errorf("anti_entropy_timeout must be > 0")
+	}
+	if cfg.AntiEntropyFanout < 2 {
+		return fmt.Errorf("anti_entropy_fanout must be >= 2")
+	}
+	if cfg.AntiEntropyLeafItemThreshold < 1 {
+		return fmt.Errorf("anti_entropy_leaf_item_threshold must be >= 1")
+	}
+	if cfg.AntiEntropyMaxDepth < 1 {
+		return fmt.Errorf("anti_entropy_max_depth must be >= 1")
 	}
 	if cfg.GossipInterval <= 0 {
 		return fmt.Errorf("gossip_interval must be > 0")
@@ -209,6 +233,22 @@ func applyFileConfig(cfg *Config, data []byte) error {
 			return fmt.Errorf("parse anti_entropy_interval: %w", err)
 		}
 		cfg.AntiEntropyInterval = d
+	}
+	if fc.AntiEntropyTimeout != nil {
+		d, err := time.ParseDuration(*fc.AntiEntropyTimeout)
+		if err != nil {
+			return fmt.Errorf("parse anti_entropy_timeout: %w", err)
+		}
+		cfg.AntiEntropyTimeout = d
+	}
+	if fc.AntiEntropyFanout != nil {
+		cfg.AntiEntropyFanout = *fc.AntiEntropyFanout
+	}
+	if fc.AntiEntropyLeafItemThreshold != nil {
+		cfg.AntiEntropyLeafItemThreshold = *fc.AntiEntropyLeafItemThreshold
+	}
+	if fc.AntiEntropyMaxDepth != nil {
+		cfg.AntiEntropyMaxDepth = *fc.AntiEntropyMaxDepth
 	}
 	if fc.GossipInterval != nil {
 		d, err := time.ParseDuration(*fc.GossipInterval)
@@ -317,6 +357,34 @@ func applyEnv(cfg *Config) error {
 			return fmt.Errorf("parse %sANTI_ENTROPY_INTERVAL: %w", envPrefix, err)
 		}
 		cfg.AntiEntropyInterval = d
+	}
+	if v, ok := getenv("ANTI_ENTROPY_TIMEOUT"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sANTI_ENTROPY_TIMEOUT: %w", envPrefix, err)
+		}
+		cfg.AntiEntropyTimeout = d
+	}
+	if v, ok := getenv("ANTI_ENTROPY_FANOUT"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("parse %sANTI_ENTROPY_FANOUT: %w", envPrefix, err)
+		}
+		cfg.AntiEntropyFanout = n
+	}
+	if v, ok := getenv("ANTI_ENTROPY_LEAF_ITEM_THRESHOLD"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("parse %sANTI_ENTROPY_LEAF_ITEM_THRESHOLD: %w", envPrefix, err)
+		}
+		cfg.AntiEntropyLeafItemThreshold = n
+	}
+	if v, ok := getenv("ANTI_ENTROPY_MAX_DEPTH"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("parse %sANTI_ENTROPY_MAX_DEPTH: %w", envPrefix, err)
+		}
+		cfg.AntiEntropyMaxDepth = n
 	}
 	if v, ok := getenv("GOSSIP_INTERVAL"); ok {
 		d, err := time.ParseDuration(v)

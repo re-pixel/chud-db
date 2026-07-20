@@ -25,6 +25,12 @@ func TestDefaultConfigValidates(t *testing.T) {
 	if cfg.ReplicationTimeout != 2*time.Second {
 		t.Fatalf("unexpected default replication timeout: %+v", cfg)
 	}
+	if cfg.AntiEntropyTimeout != 5*time.Second {
+		t.Fatalf("unexpected default anti entropy timeout: %+v", cfg)
+	}
+	if cfg.AntiEntropyFanout != 4 || cfg.AntiEntropyLeafItemThreshold != 32 || cfg.AntiEntropyMaxDepth != 6 {
+		t.Fatalf("unexpected default anti entropy tree params: %+v", cfg)
+	}
 	if cfg.IndirectPingFanout != 3 {
 		t.Fatalf("unexpected default indirect ping fanout: %+v", cfg)
 	}
@@ -71,6 +77,10 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 		"tablet_split_bytes": 1048576,
 		"tablet_merge_bytes": 262144,
 		"anti_entropy_interval": "30s",
+		"anti_entropy_timeout": "8s",
+		"anti_entropy_fanout": 8,
+		"anti_entropy_leaf_item_threshold": 64,
+		"anti_entropy_max_depth": 3,
 		"gossip_interval": "2s",
 		"ping_timeout": "250ms",
 		"suspect_timeout": "10s",
@@ -96,6 +106,12 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 	}
 	if cfg.AntiEntropyInterval != 30*time.Second {
 		t.Fatalf("anti entropy interval = %v", cfg.AntiEntropyInterval)
+	}
+	if cfg.AntiEntropyTimeout != 8*time.Second {
+		t.Fatalf("anti entropy timeout = %v", cfg.AntiEntropyTimeout)
+	}
+	if cfg.AntiEntropyFanout != 8 || cfg.AntiEntropyLeafItemThreshold != 64 || cfg.AntiEntropyMaxDepth != 3 {
+		t.Fatalf("anti entropy tree params = fanout=%d leaf=%d depth=%d", cfg.AntiEntropyFanout, cfg.AntiEntropyLeafItemThreshold, cfg.AntiEntropyMaxDepth)
 	}
 	if cfg.GossipInterval != 2*time.Second {
 		t.Fatalf("gossip interval = %v", cfg.GossipInterval)
@@ -137,6 +153,10 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	t.Setenv("NOSQL_CLUSTER_NODE_ID", "env-node")
 	t.Setenv("NOSQL_CLUSTER_SEEDS", "10.0.0.1:7100, 10.0.0.2:7100,,")
 	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_INTERVAL", "45s")
+	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_TIMEOUT", "9s")
+	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_FANOUT", "6")
+	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_LEAF_ITEM_THRESHOLD", "48")
+	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_MAX_DEPTH", "5")
 	t.Setenv("NOSQL_CLUSTER_GOSSIP_INTERVAL", "3s")
 	t.Setenv("NOSQL_CLUSTER_PING_TIMEOUT", "750ms")
 	t.Setenv("NOSQL_CLUSTER_SUSPECT_TIMEOUT", "15s")
@@ -158,6 +178,12 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}
 	if cfg.AntiEntropyInterval != 45*time.Second {
 		t.Fatalf("anti entropy interval = %v", cfg.AntiEntropyInterval)
+	}
+	if cfg.AntiEntropyTimeout != 9*time.Second {
+		t.Fatalf("anti entropy timeout = %v", cfg.AntiEntropyTimeout)
+	}
+	if cfg.AntiEntropyFanout != 6 || cfg.AntiEntropyLeafItemThreshold != 48 || cfg.AntiEntropyMaxDepth != 5 {
+		t.Fatalf("anti entropy tree params = fanout=%d leaf=%d depth=%d", cfg.AntiEntropyFanout, cfg.AntiEntropyLeafItemThreshold, cfg.AntiEntropyMaxDepth)
 	}
 	if cfg.GossipInterval != 3*time.Second {
 		t.Fatalf("gossip interval = %v", cfg.GossipInterval)
@@ -236,6 +262,46 @@ func TestValidateRejectsNonPositiveReplicationTimeout(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "replication_timeout") {
 		t.Fatalf("expected replication_timeout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveAntiEntropyTimeout(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AntiEntropyTimeout = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "anti_entropy_timeout") {
+		t.Fatalf("expected anti_entropy_timeout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsAntiEntropyFanoutBelowTwo(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AntiEntropyFanout = 1
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "anti_entropy_fanout") {
+		t.Fatalf("expected anti_entropy_fanout error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveAntiEntropyLeafItemThreshold(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AntiEntropyLeafItemThreshold = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "anti_entropy_leaf_item_threshold") {
+		t.Fatalf("expected anti_entropy_leaf_item_threshold error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveAntiEntropyMaxDepth(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.AntiEntropyMaxDepth = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "anti_entropy_max_depth") {
+		t.Fatalf("expected anti_entropy_max_depth error, got %v", err)
 	}
 }
 
