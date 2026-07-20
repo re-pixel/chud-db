@@ -110,10 +110,8 @@ message CoordinatedGetRequest {
 
 message CoordinatedGetResponse {
   Status status = 1;
-  bool found = 2;
-  string value = 3;
-  VectorClock vector_clock = 4;
-  bool had_conflict = 5; // Reconcile found siblings, resolved via PickByTimestamp (Phase 5 replaces this)
+  repeated Envelope versions = 2; // empty = not found; 1 = resolved (check .deleted); 2+ = concurrent siblings
+  VectorClock vector_clock = 3; // context for the next write: merges every returned version's clock
 }
 
 enum MemberStatus {

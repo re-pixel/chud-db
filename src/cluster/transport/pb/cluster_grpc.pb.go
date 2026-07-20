@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             (unknown)
-// source: cluster/v1/cluster.proto
+// source: proto/cluster/v1/cluster.proto
 
 package pb
 
@@ -269,7 +269,7 @@ var NodeService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cluster/v1/cluster.proto",
+	Metadata: "proto/cluster/v1/cluster.proto",
 }
 
 const (
@@ -447,7 +447,7 @@ var CoordinationService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cluster/v1/cluster.proto",
+	Metadata: "proto/cluster/v1/cluster.proto",
 }
 
 const (
@@ -625,7 +625,7 @@ var GossipService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cluster/v1/cluster.proto",
+	Metadata: "proto/cluster/v1/cluster.proto",
 }
 
 const (
@@ -727,7 +727,7 @@ var RangeMapService_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "cluster/v1/cluster.proto",
+	Metadata: "proto/cluster/v1/cluster.proto",
 }
 
 const (
@@ -909,7 +909,7 @@ var AntiEntropyService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "cluster/v1/cluster.proto",
+	Metadata: "proto/cluster/v1/cluster.proto",
 }
 
 const (
@@ -1053,5 +1053,5 @@ var BootstrapService_ServiceDesc = grpc.ServiceDesc{
 			ServerStreams: true,
 		},
 	},
-	Metadata: "cluster/v1/cluster.proto",
+	Metadata: "proto/cluster/v1/cluster.proto",
 }
