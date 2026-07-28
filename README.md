@@ -1,4 +1,4 @@
-# NoSQL Engine
+# NoSQL Engine (in progress)
 
 A from-scratch **NoSQL key-value storage engine** written in Go, implementing an **LSM-tree** architecture inspired by RocksDB and Cassandra. Built as a learning project toward a distributed database system.
 
