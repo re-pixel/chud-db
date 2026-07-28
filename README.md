@@ -206,6 +206,41 @@ concurrent versions):
    2 entries, one per replica, and `vector_clock` merges both
    (`{node-1: 1, node-2: 1}`).
 
+### Anti-entropy repair
+
+Quorum writes/reads (above) tolerate a down replica but never fix it up
+— a replica that misses writes while it's down (or never catches a
+write at all, e.g. `write_quorum=1` succeeding with only one of two
+owners acking) just stays behind forever unless something reconciles
+it. Every node also runs a background anti-entropy `Scheduler`: for
+each range it owns, on every `anti_entropy_interval` tick it picks one
+other replica of that range and walks a **tiered Merkle tree** over
+the two replicas' key ranges — recursively comparing root hashes
+(`AntiEntropyService.GetMerkleRoot`), splitting into `anti_entropy_
+fanout` sub-ranges wherever they mismatch, until a bucket is small
+enough (`anti_entropy_leaf_item_threshold`) or deep enough
+(`anti_entropy_max_depth`) to diff key-by-key instead
+(`AntiEntropyService.StreamRange`). Only causally-dominant versions
+are propagated (`AntiEntropyService.RepairKeys`); genuine concurrent
+siblings are left alone for the client to resolve, exactly as in
+`Coordinated Get` above. An empty new replica facing a full peer is
+just the extreme case of this same walk — the whole tree gets visited
+and streamed, which is also how a brand-new node bootstraps its
+initial state.
+
+To see it repair a straggler on the 3-node cluster above:
+
+1. Kill `node-2`. `Put` a key via `node-1`'s `CoordinationService` with
+   `write_quorum=1` — it lands only on `node-1` (`acks=1 required=1`).
+2. Restart `node-2`. `NodeService.Get` *directly against node-2* (not
+   through the coordinator) returns not-found — it never received the
+   write and has nothing in its own log to replay.
+3. Wait one `anti_entropy_interval` tick. `NodeService.Get` against
+   `node-2` again now returns the value, with the exact same vector
+   clock `node-1` stamped (`{node-1: 1}`) — proof it arrived via
+   anti-entropy pulling `node-1`'s causally-dominant version, not via
+   the original (quorum-1) write it never saw.
+
 ---
 
 ## Benchmarks
