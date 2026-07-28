@@ -10,6 +10,7 @@ import (
 	"syscall"
 	"time"
 
+	clusterantientropy "nosqlEngine/src/cluster/antientropy"
 	clusterconfig "nosqlEngine/src/cluster/config"
 	clustercoordination "nosqlEngine/src/cluster/coordination"
 	clustermembership "nosqlEngine/src/cluster/membership"
@@ -65,6 +66,9 @@ func run() error {
 	store := clusternode.NewNodeStore(eng, clusternode.DefaultStoreUser)
 	nodeServer := clusternode.NewServer(cfg, store, ringTable)
 
+	antiEntropyStore := nodeAntiEntropyStore{store}
+	antiEntropyServer := clusterantientropy.NewServer(antiEntropyStore, ringTable)
+
 	membershipClient := clustermembership.NewClient()
 	defer membershipClient.Close() //nolint:errcheck
 
@@ -111,11 +115,30 @@ func run() error {
 	)
 	coordinationServer := clustercoordination.NewServer(coordinator)
 
+	antiEntropyClient := clusterantientropy.NewClient()
+	defer antiEntropyClient.Close() //nolint:errcheck
+
+	antiEntropyScheduler := clusterantientropy.NewScheduler(
+		clusterantientropy.SchedulerConfig{
+			NodeID:            cfg.NodeID,
+			Interval:          cfg.AntiEntropyInterval,
+			Timeout:           cfg.AntiEntropyTimeout,
+			Fanout:            cfg.AntiEntropyFanout,
+			LeafItemThreshold: cfg.AntiEntropyLeafItemThreshold,
+			MaxDepth:          cfg.AntiEntropyMaxDepth,
+		},
+		antiEntropyStore,
+		membershipAddressResolver{table},
+		antiEntropyClient,
+		ringOwnedRanges{table: ringTable, localID: cfg.NodeID},
+	)
+
 	grpcServer := grpc.NewServer()
 	pb.RegisterNodeServiceServer(grpcServer, nodeServer)
 	pb.RegisterGossipServiceServer(grpcServer, gossipServer)
 	pb.RegisterRangeMapServiceServer(grpcServer, ringServer)
 	pb.RegisterCoordinationServiceServer(grpcServer, coordinationServer)
+	pb.RegisterAntiEntropyServiceServer(grpcServer, antiEntropyServer)
 
 	serveErr := make(chan error, 1)
 	go func() {
@@ -127,6 +150,7 @@ func run() error {
 	gossipCtx, stopGossip := context.WithCancel(context.Background())
 	gossiper.Start(gossipCtx)
 	syncer.Start(gossipCtx)
+	antiEntropyScheduler.Start(gossipCtx)
 
 	fmt.Printf("node %s listening on %s (advertise %s)\n", cfg.NodeID, cfg.ListenAddr, cfg.AdvertiseAddr)
 
@@ -140,12 +164,14 @@ func run() error {
 		stopGossip()
 		gossiper.Stop()
 		syncer.Stop()
+		antiEntropyScheduler.Stop()
 		shutdownGRPC(grpcServer)
 		return nil
 	case err := <-serveErr:
 		stopGossip()
 		gossiper.Stop()
 		syncer.Stop()
+		antiEntropyScheduler.Stop()
 		return fmt.Errorf("serve grpc: %w", err)
 	}
 }
@@ -188,6 +214,57 @@ func (m membershipAddressResolver) Address(nodeID string) (string, bool) {
 		return "", false
 	}
 	return member.AdvertiseAddr, true
+}
+
+// nodeAntiEntropyStore adapts a *clusternode.NodeStore into the
+// clusterantientropy.Store the Server and Scheduler need. Put/Delete
+// are promoted directly from the embedded NodeStore (identical
+// signatures already); only ScanRawRange needs a real adapter method,
+// converting node's own RawKV into antientropy's RawEntry (both plain
+// (key, raw value) pairs) so neither package has to import the other.
+type nodeAntiEntropyStore struct {
+	*clusternode.NodeStore
+}
+
+func (n nodeAntiEntropyStore) ScanRawRange(start, end string) ([]clusterantientropy.RawEntry, error) {
+	rows, err := n.NodeStore.ScanRawRange(start, end)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]clusterantientropy.RawEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = clusterantientropy.RawEntry{Key: row.Key, Value: row.Value}
+	}
+	return entries, nil
+}
+
+// ringOwnedRanges adapts a ring.Table into the
+// clusterantientropy.OwnedRangesSource the Scheduler needs: every range
+// whose replica set includes the local node, tagged with its full
+// replica set so Scheduler can pick another replica to repair against.
+type ringOwnedRanges struct {
+	table   *clusterring.Table
+	localID string
+}
+
+func (r ringOwnedRanges) OwnedRanges() []clusterantientropy.OwnedRange {
+	snapshot := r.table.Snapshot()
+
+	owned := make([]clusterantientropy.OwnedRange, 0, len(snapshot.Ranges))
+	for _, rng := range snapshot.Ranges {
+		for _, id := range rng.Replicas {
+			if id != r.localID {
+				continue
+			}
+			owned = append(owned, clusterantientropy.OwnedRange{
+				Start:    rng.Start,
+				End:      rng.End,
+				Replicas: append([]string(nil), rng.Replicas...),
+			})
+			break
+		}
+	}
+	return owned
 }
 
 func shutdownGRPC(server *grpc.Server) {

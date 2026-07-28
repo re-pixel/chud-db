@@ -2,6 +2,7 @@ package node
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -178,6 +179,94 @@ func TestNodeStoreScanRangeReturnsDecodeError(t *testing.T) {
 	}
 }
 
+func TestNodeStoreScanRawRangeReturnsUndecodedRows(t *testing.T) {
+	engine := newFakeEngine()
+	store := NewNodeStore(engine, "cluster-user")
+	engine.rangeRows = [][]string{{"a", "raw-a"}, {"b", "raw-b"}}
+
+	rows, err := store.ScanRawRange("a", "z")
+	if err != nil {
+		t.Fatalf("scan raw range: %v", err)
+	}
+	want := []RawKV{{Key: "a", Value: "raw-a"}, {Key: "b", Value: "raw-b"}}
+	if len(rows) != len(want) || rows[0] != want[0] || rows[1] != want[1] {
+		t.Fatalf("rows = %#v, want %#v", rows, want)
+	}
+}
+
+func TestNodeStoreScanRawRangeExcludesInclusiveEndMatch(t *testing.T) {
+	engine := newFakeEngine()
+	store := NewNodeStore(engine, "cluster-user")
+	// engine.RangeScan is inclusive of "end"; ScanRawRange must drop an
+	// exact match on end to honor its own half-open [start, end)
+	// contract.
+	engine.rangeRows = [][]string{{"a", "raw-a"}, {"m", "raw-m"}}
+
+	rows, err := store.ScanRawRange("a", "m")
+	if err != nil {
+		t.Fatalf("scan raw range: %v", err)
+	}
+	if len(rows) != 1 || rows[0].Key != "a" {
+		t.Fatalf("rows = %#v, want only key 'a'", rows)
+	}
+}
+
+func TestNodeStoreScanRawRangeTranslatesUnboundedEndToSentinel(t *testing.T) {
+	engine := newFakeEngine()
+	store := NewNodeStore(engine, "cluster-user")
+
+	if _, err := store.ScanRawRange("m", ""); err != nil {
+		t.Fatalf("scan raw range: %v", err)
+	}
+	if engine.lastRange.start != "m" || engine.lastRange.end != unboundedRangeEnd {
+		t.Fatalf("range args = %#v, want end translated to the unbounded sentinel", engine.lastRange)
+	}
+}
+
+func TestNodeStoreScanRawRangePaginatesAcrossMultiplePages(t *testing.T) {
+	engine := newFakeEngine()
+	store := NewNodeStore(engine, "cluster-user")
+	page1 := make([][]string, rawScanPageSize)
+	for i := range page1 {
+		page1[i] = []string{fmt.Sprintf("k%04d", i), "raw"}
+	}
+	page2 := [][]string{{"last", "raw-last"}}
+	engine.rangePages = [][][]string{page1, page2}
+
+	rows, err := store.ScanRawRange("", "")
+	if err != nil {
+		t.Fatalf("scan raw range: %v", err)
+	}
+	if len(rows) != rawScanPageSize+1 {
+		t.Fatalf("rows = %d, want %d", len(rows), rawScanPageSize+1)
+	}
+	if rows[len(rows)-1].Key != "last" {
+		t.Fatalf("last row = %#v, want key 'last'", rows[len(rows)-1])
+	}
+}
+
+func TestNodeStoreScanRawRangePropagatesEngineError(t *testing.T) {
+	engine := newFakeEngine()
+	engine.rangeErr = errors.New("range scan failed")
+	store := NewNodeStore(engine, "cluster-user")
+
+	_, err := store.ScanRawRange("a", "z")
+	if !errors.Is(err, engine.rangeErr) {
+		t.Fatalf("expected range scan error, got %v", err)
+	}
+}
+
+func TestNodeStoreScanRawRangeRejectsMalformedRow(t *testing.T) {
+	engine := newFakeEngine()
+	engine.rangeRows = [][]string{{"onlykey"}}
+	store := NewNodeStore(engine, "cluster-user")
+
+	_, err := store.ScanRawRange("a", "z")
+	if err == nil || !strings.Contains(err.Error(), "malformed") {
+		t.Fatalf("expected malformed row error, got %v", err)
+	}
+}
+
 func TestNodeStoreReturnsEngineErrors(t *testing.T) {
 	engine := newFakeEngine()
 	engine.writeErr = errors.New("write failed")
@@ -195,6 +284,7 @@ type fakeEngine struct {
 	writeCalls []writeCall
 	asyncCalls []writeCall
 	rangeRows  [][]string
+	rangePages [][][]string // if set, indexed by pageNum-1; overrides rangeRows
 	lastRange  rangeCall
 	writeErr   error
 	asyncErr   error
@@ -251,6 +341,13 @@ func (e *fakeEngine) RangeScan(user, start, end string, pageNum, pageSize int) (
 	e.lastRange = rangeCall{user: user, start: start, end: end, pageNum: pageNum, pageSize: pageSize}
 	if e.rangeErr != nil {
 		return nil, e.rangeErr
+	}
+	if e.rangePages != nil {
+		idx := pageNum - 1
+		if idx < 0 || idx >= len(e.rangePages) {
+			return nil, nil
+		}
+		return e.rangePages[idx], nil
 	}
 	return e.rangeRows, nil
 }

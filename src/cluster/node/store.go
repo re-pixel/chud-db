@@ -2,6 +2,7 @@ package node
 
 import (
 	"fmt"
+	"strings"
 
 	"nosqlEngine/src/cluster/versioning"
 )
@@ -74,6 +75,67 @@ func (s *NodeStore) ScanRange(start, end string, pageNum, pageSize int) ([]versi
 		results = append(results, versioning.KeyEnvelope{Key: row[0], Envelope: envelope})
 	}
 	return results, nil
+}
+
+// rawScanPageSize bounds how many rows ScanRawRange fetches per
+// underlying RangeScan call. Anti-entropy buckets are already capped in
+// size by the Merkle tree's leaf-item threshold, so this only matters
+// for a caller requesting a very wide (e.g. whole-keyspace) range.
+const rawScanPageSize = 1000
+
+// unboundedRangeEnd stands in for ScanRawRange's "no upper bound" end
+// ("") when calling into the underlying engine, which - unlike this
+// method's own half-open convention - has no unbounded-end sentinel at
+// all (see ring.Range's doc comment) and always compares end literally.
+// A real key that itself begins with this many 0xFF bytes and is
+// longer would incorrectly be excluded from an "unbounded" scan; this
+// is accepted as vanishingly unlikely for this engine's key space in
+// practice (see TECH_DEBT.md).
+var unboundedRangeEnd = strings.Repeat("\xff", 64)
+
+// RawKV is a single (key, raw stored value) pair as returned by
+// ScanRawRange - the value is left exactly as stored (an encoded
+// versioning.Envelope), never decoded here.
+type RawKV struct {
+	Key   string
+	Value string
+}
+
+// ScanRawRange returns every (key, raw stored value) pair in the
+// half-open interval [start, end) - the convention used throughout the
+// cluster layer's ring/anti-entropy code (see ring.Range's doc
+// comment) - unpaginated from the caller's perspective, without
+// decoding envelopes. This is the local-storage capability anti-entropy
+// needs for both Merkle root hashing and leaf streaming - see
+// antientropy.Store.
+func (s *NodeStore) ScanRawRange(start, end string) ([]RawKV, error) {
+	scanEnd := end
+	if scanEnd == "" {
+		scanEnd = unboundedRangeEnd
+	}
+
+	rows := make([]RawKV, 0)
+	for page := 1; ; page++ {
+		// engine.RangeScan is inclusive of end; drop a trailing exact
+		// match on the caller's own end to translate its convention
+		// into this method's half-open one.
+		batch, err := s.engine.RangeScan(s.user, start, scanEnd, page, rawScanPageSize)
+		if err != nil {
+			return nil, err
+		}
+		for _, row := range batch {
+			if len(row) < 2 {
+				return nil, fmt.Errorf("range scan returned malformed row: %#v", row)
+			}
+			if end != "" && row[0] == end {
+				continue
+			}
+			rows = append(rows, RawKV{Key: row[0], Value: row[1]})
+		}
+		if len(batch) < rawScanPageSize {
+			return rows, nil
+		}
+	}
 }
 
 func (s *NodeStore) writeEnvelope(key string, envelope versioning.Envelope, sync bool) error {
