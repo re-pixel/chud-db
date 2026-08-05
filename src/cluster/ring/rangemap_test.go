@@ -7,8 +7,7 @@ import (
 
 func singleRange(replicas ...string) RangeMap {
 	return RangeMap{
-		Generation: 1,
-		Ranges:     []Range{{Start: "", End: "", Replicas: replicas}},
+		Ranges: []Range{{Start: "", End: "", Replicas: replicas, Generation: 1, ProposalID: "bootstrap"}},
 	}
 }
 
@@ -21,10 +20,9 @@ func TestRangeMapValidateAcceptsSingleGlobalRange(t *testing.T) {
 
 func TestRangeMapValidateAcceptsContiguousMultiRange(t *testing.T) {
 	m := RangeMap{
-		Generation: 2,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 2, ProposalID: "test"},
 		},
 	}
 	if err := m.Validate(); err != nil {
@@ -33,7 +31,7 @@ func TestRangeMapValidateAcceptsContiguousMultiRange(t *testing.T) {
 }
 
 func TestRangeMapValidateRejectsEmpty(t *testing.T) {
-	m := RangeMap{Generation: 1}
+	m := RangeMap{}
 	err := m.Validate()
 	if err == nil || !strings.Contains(err.Error(), "at least one range") {
 		t.Fatalf("expected empty-ranges error, got %v", err)
@@ -42,9 +40,8 @@ func TestRangeMapValidateRejectsEmpty(t *testing.T) {
 
 func TestRangeMapValidateRejectsBoundedFirstRange(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "a", End: "", Replicas: []string{"node-1"}},
+			{Start: "a", End: "", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 	err := m.Validate()
@@ -55,9 +52,8 @@ func TestRangeMapValidateRejectsBoundedFirstRange(t *testing.T) {
 
 func TestRangeMapValidateRejectsBoundedLastRange(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "z", Replicas: []string{"node-1"}},
+			{Start: "", End: "z", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 	err := m.Validate()
@@ -68,10 +64,9 @@ func TestRangeMapValidateRejectsBoundedLastRange(t *testing.T) {
 
 func TestRangeMapValidateRejectsGap(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "n", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "n", End: "", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 	err := m.Validate()
@@ -82,10 +77,9 @@ func TestRangeMapValidateRejectsGap(t *testing.T) {
 
 func TestRangeMapValidateRejectsOverlap(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "k", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "k", End: "", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 	err := m.Validate()
@@ -102,13 +96,32 @@ func TestRangeMapValidateRejectsEmptyReplicas(t *testing.T) {
 	}
 }
 
+func TestRangeMapValidateRejectsMissingGeneration(t *testing.T) {
+	m := singleRange("node-1")
+	m.Ranges[0].Generation = 0
+
+	err := m.Validate()
+	if err == nil || !strings.Contains(err.Error(), "generation 0") {
+		t.Fatalf("expected generation error, got %v", err)
+	}
+}
+
+func TestRangeMapValidateRejectsMissingProposalID(t *testing.T) {
+	m := singleRange("node-1")
+	m.Ranges[0].ProposalID = ""
+
+	err := m.Validate()
+	if err == nil || !strings.Contains(err.Error(), "proposal ID") {
+		t.Fatalf("expected proposal ID error, got %v", err)
+	}
+}
+
 func TestRangeMapValidateRejectsDegenerateRange(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "k", Replicas: []string{"node-1"}},
-			{Start: "k", End: "k", Replicas: []string{"node-2"}},
-			{Start: "k", End: "", Replicas: []string{"node-3"}},
+			{Start: "", End: "k", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "k", End: "k", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
+			{Start: "k", End: "", Replicas: []string{"node-3"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 	err := m.Validate()
@@ -119,10 +132,9 @@ func TestRangeMapValidateRejectsDegenerateRange(t *testing.T) {
 
 func TestRangeMapOwnersFindsContainingRange(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 
@@ -139,10 +151,9 @@ func TestRangeMapOwnersFindsContainingRange(t *testing.T) {
 
 func TestRangeMapOwnersForKeyRangeWithinSingleRange(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 
@@ -154,10 +165,9 @@ func TestRangeMapOwnersForKeyRangeWithinSingleRange(t *testing.T) {
 
 func TestRangeMapOwnersForKeyRangeRejectsBoundaryStraddling(t *testing.T) {
 	m := RangeMap{
-		Generation: 1,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
 		},
 	}
 
@@ -177,6 +187,47 @@ func TestRangeMapOwnersForKeyRangeUnboundedRangeAcceptsAnyEnd(t *testing.T) {
 
 	if _, ok := m.OwnersForKeyRange("a", "zzzzzzzz"); !ok {
 		t.Fatalf("expected a fully unbounded range to own any end key")
+	}
+}
+
+func TestRangeMapOwnersForRangeAcceptsExactBoundedRange(t *testing.T) {
+	m := RangeMap{
+		Ranges: []Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
+		},
+	}
+
+	owners, ok := m.OwnersForRange("", "m")
+	if !ok || len(owners) != 1 || owners[0] != "node-1" {
+		t.Fatalf("owners = %#v, ok=%v", owners, ok)
+	}
+}
+
+func TestRangeMapOwnersForRangeRejectsBoundaryStraddling(t *testing.T) {
+	m := RangeMap{
+		Ranges: []Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
+		},
+	}
+
+	if _, ok := m.OwnersForRange("a", "z"); ok {
+		t.Fatalf("expected half-open range straddling the boundary to be rejected")
+	}
+	if _, ok := m.OwnersForRange("a", ""); ok {
+		t.Fatalf("expected bounded owner range to reject an unbounded requested end")
+	}
+}
+
+func TestRangeMapOwnersForRangeRejectsDegenerateRange(t *testing.T) {
+	m := singleRange("node-1")
+
+	if _, ok := m.OwnersForRange("m", "m"); ok {
+		t.Fatalf("expected degenerate range to be rejected")
+	}
+	if _, ok := m.OwnersForRange("z", "a"); ok {
+		t.Fatalf("expected inverted range to be rejected")
 	}
 }
 

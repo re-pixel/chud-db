@@ -10,9 +10,11 @@ package ring
 // covering the whole keyspace, and lets a future split pick a boundary
 // key that belongs unambiguously to exactly one side.
 type Range struct {
-	Start    string
-	End      string
-	Replicas []string
+	Start      string
+	End        string
+	Replicas   []string
+	Generation uint64
+	ProposalID string
 }
 
 // Contains reports whether key falls within the half-open interval
@@ -30,8 +32,10 @@ func (r Range) Contains(key string) bool {
 // Clone returns a deep copy of r.
 func (r Range) Clone() Range {
 	return Range{
-		Start:    r.Start,
-		End:      r.End,
-		Replicas: append([]string(nil), r.Replicas...),
+		Start:      r.Start,
+		End:        r.End,
+		Replicas:   append([]string(nil), r.Replicas...),
+		Generation: r.Generation,
+		ProposalID: r.ProposalID,
 	}
 }
