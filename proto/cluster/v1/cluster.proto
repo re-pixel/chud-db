@@ -165,6 +165,8 @@ message RangeSpec {
   string start = 1;
   string end = 2;
   repeated string replica_node_ids = 3;
+  uint64 generation = 4;
+  string proposal_id = 5;
 }
 
 message RangeMap {

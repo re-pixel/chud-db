@@ -9,13 +9,13 @@ func TestNewTableRejectsInvalidRangeMap(t *testing.T) {
 	}
 }
 
-func TestNewTableSeedsGenerationAndOwnership(t *testing.T) {
+func TestNewTableSeedsEpochAndOwnership(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1", "node-2"))
 	if err != nil {
 		t.Fatalf("new table: %v", err)
 	}
-	if table.Generation() != 1 {
-		t.Fatalf("generation = %d, want 1", table.Generation())
+	if table.Epoch() != 1 {
+		t.Fatalf("epoch = %d, want 1", table.Epoch())
 	}
 	if !table.IsOwner("anykey") {
 		t.Fatalf("expected node-1 to own everything in the single global range")
@@ -54,10 +54,9 @@ func TestOwnsKeyRangeFalseWhenNotInReplicaSet(t *testing.T) {
 
 func TestOwnsKeyRangeFalseWhenScanStraddlesBoundary(t *testing.T) {
 	table, err := NewTable("node-1", RangeMap{
-		Generation: 2,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-1"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "test"},
 		},
 	})
 	if err != nil {
@@ -68,54 +67,78 @@ func TestOwnsKeyRangeFalseWhenScanStraddlesBoundary(t *testing.T) {
 	}
 }
 
-func TestReplaceAcceptsStrictlyNewerGeneration(t *testing.T) {
+func TestOwnsRangeAcceptsExactBoundedRange(t *testing.T) {
+	table, err := NewTable("node-1", RangeMap{
+		Ranges: []Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 2, ProposalID: "test"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	if !table.OwnsRange("", "m") {
+		t.Fatalf("expected node-1 to own its exact half-open range")
+	}
+}
+
+func TestOwnsRangeFalseWhenNotInReplicaSet(t *testing.T) {
+	table, err := NewTable("node-3", singleRange("node-1", "node-2"))
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	if table.OwnsRange("a", "z") {
+		t.Fatalf("node-3 should not own a range when it is not a replica")
+	}
+}
+
+func TestMergeAcceptsStrictlyNewerGeneration(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1"))
 	if err != nil {
 		t.Fatalf("new table: %v", err)
 	}
 
-	changed, err := table.Replace(singleRange("node-1"))
+	changed, err := table.Merge(singleRange("node-1"))
 	if err != nil {
-		t.Fatalf("replace: %v", err)
+		t.Fatalf("merge: %v", err)
 	}
 	if changed {
-		t.Fatalf("equal generation should not replace")
+		t.Fatalf("identical map should not change")
 	}
 
 	newer := RangeMap{
-		Generation: 2,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "split"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 2, ProposalID: "split"},
 		},
 	}
-	changed, err = table.Replace(newer)
+	changed, err = table.Merge(newer)
 	if err != nil {
-		t.Fatalf("replace: %v", err)
+		t.Fatalf("merge: %v", err)
 	}
 	if !changed {
-		t.Fatalf("strictly newer generation should replace")
+		t.Fatalf("strictly newer generation should merge")
 	}
-	if table.Generation() != 2 {
-		t.Fatalf("generation = %d, want 2", table.Generation())
+	if table.Epoch() != 2 {
+		t.Fatalf("epoch = %d, want 2", table.Epoch())
 	}
 	if table.IsOwner("z") {
 		t.Fatalf("node-1 should no longer own the second range after split")
 	}
 }
 
-func TestReplaceRejectsInvalidIncomingMap(t *testing.T) {
+func TestMergeRejectsInvalidIncomingMap(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1"))
 	if err != nil {
 		t.Fatalf("new table: %v", err)
 	}
 
-	_, err = table.Replace(RangeMap{Generation: 2})
+	_, err = table.Merge(RangeMap{})
 	if err == nil {
 		t.Fatalf("expected validation error for empty incoming map")
 	}
-	if table.Generation() != 1 {
-		t.Fatalf("invalid replace should not mutate table")
+	if table.Epoch() != 1 {
+		t.Fatalf("invalid merge should not mutate table")
 	}
 }
 

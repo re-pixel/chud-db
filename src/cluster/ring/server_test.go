@@ -28,8 +28,8 @@ func TestServerGetRangeMapReturnsCurrentSnapshot(t *testing.T) {
 	}
 
 	got := RangeMapFromProto(resp.GetMap())
-	if got.Generation != 1 {
-		t.Fatalf("generation = %d, want 1", got.Generation)
+	if got.Epoch() != 1 {
+		t.Fatalf("epoch = %d, want 1", got.Epoch())
 	}
 	if len(got.Ranges) != 1 || got.Ranges[0].Start != "" || got.Ranges[0].End != "" {
 		t.Fatalf("ranges = %#v", got.Ranges)
@@ -39,18 +39,17 @@ func TestServerGetRangeMapReturnsCurrentSnapshot(t *testing.T) {
 	}
 }
 
-func TestServerGetRangeMapReflectsReplacedMap(t *testing.T) {
+func TestServerGetRangeMapReflectsMergedMap(t *testing.T) {
 	server, table := newTestServer(t)
 
 	newer := RangeMap{
-		Generation: 2,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "split"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 2, ProposalID: "split"},
 		},
 	}
-	if changed, err := table.Replace(newer); err != nil || !changed {
-		t.Fatalf("replace: changed=%v err=%v", changed, err)
+	if changed, err := table.Merge(newer); err != nil || !changed {
+		t.Fatalf("merge: changed=%v err=%v", changed, err)
 	}
 
 	resp, err := server.GetRangeMap(context.Background(), &pb.GetRangeMapRequest{})
@@ -59,7 +58,7 @@ func TestServerGetRangeMapReflectsReplacedMap(t *testing.T) {
 	}
 
 	got := RangeMapFromProto(resp.GetMap())
-	if got.Generation != 2 || len(got.Ranges) != 2 {
+	if got.Epoch() != 2 || len(got.Ranges) != 2 {
 		t.Fatalf("expected updated map, got %#v", got)
 	}
 }

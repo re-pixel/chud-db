@@ -15,7 +15,7 @@ func testSyncerConfig() SyncerConfig {
 	}
 }
 
-func TestSyncerTickSkipsPeersAtOrBelowLocalGeneration(t *testing.T) {
+func TestSyncerTickSamplesPeerAtLocalEpoch(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1"))
 	if err != nil {
 		t.Fatalf("new table: %v", err)
@@ -28,21 +28,47 @@ func TestSyncerTickSkipsPeersAtOrBelowLocalGeneration(t *testing.T) {
 	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
-	if len(client.callsSnapshot()) != 0 {
-		t.Fatalf("expected no pull for a peer at or below local generation, got %v", client.callsSnapshot())
+	if len(client.callsSnapshot()) != 1 {
+		t.Fatalf("expected an unconditional convergence pull, got %v", client.callsSnapshot())
 	}
 }
 
-func TestSyncerTickPullsAndReplacesFromNewerPeer(t *testing.T) {
+func TestSyncerTickMergesMissingUpdateFromEqualEpochPeer(t *testing.T) {
+	local := RangeMap{Ranges: []Range{
+		versionedRange("", "m", 2, "left-new", "node-1"),
+		versionedRange("m", "", 1, "right-base", "node-1"),
+	}}
+	table, err := NewTable("node-1", local)
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	remote := RangeMap{Ranges: []Range{
+		versionedRange("", "m", 1, "left-base", "node-1"),
+		versionedRange("m", "", 2, "right-new", "node-2"),
+	}}
+	client := newFakeRangeMapClient()
+	client.results["10.0.0.1:7000"] = rangeMapResult{rangeMap: remote}
+	peers := &fakePeerEpochSource{peers: []PeerEpoch{
+		{NodeID: "peer-1", AdvertiseAddr: "10.0.0.1:7000", RangeMapEpoch: 2},
+	}}
+
+	NewSyncer(table, client, peers, nil, testSyncerConfig()).tick(context.Background())
+
+	got := table.Snapshot()
+	if got.Ranges[0].ProposalID != "left-new" || got.Ranges[1].ProposalID != "right-new" {
+		t.Fatalf("equal-epoch maps did not reconcile: %#v", got)
+	}
+}
+
+func TestSyncerTickPullsAndMergesFromNewerPeer(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1"))
 	if err != nil {
 		t.Fatalf("new table: %v", err)
 	}
 	newer := RangeMap{
-		Generation: 2,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "split"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 2, ProposalID: "split"},
 		},
 	}
 	client := newFakeRangeMapClient()
@@ -54,8 +80,8 @@ func TestSyncerTickPullsAndReplacesFromNewerPeer(t *testing.T) {
 	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
-	if table.Generation() != 2 {
-		t.Fatalf("generation = %d, want 2", table.Generation())
+	if table.Epoch() != 2 {
+		t.Fatalf("epoch = %d, want 2", table.Epoch())
 	}
 	if len(client.callsSnapshot()) != 1 || client.callsSnapshot()[0] != "10.0.0.1:7000" {
 		t.Fatalf("calls = %v", client.callsSnapshot())
@@ -68,8 +94,7 @@ func TestSyncerTickTriesNextPeerOnPullFailure(t *testing.T) {
 		t.Fatalf("new table: %v", err)
 	}
 	newer := RangeMap{
-		Generation: 2,
-		Ranges:     []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}}},
+		Ranges: []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}, Generation: 2, ProposalID: "replicas"}},
 	}
 	client := newFakeRangeMapClient()
 	client.results["10.0.0.1:7000"] = rangeMapResult{err: errors.New("unreachable")}
@@ -82,8 +107,8 @@ func TestSyncerTickTriesNextPeerOnPullFailure(t *testing.T) {
 	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
-	if table.Generation() != 2 {
-		t.Fatalf("generation = %d, want 2 after falling back to second peer", table.Generation())
+	if table.Epoch() != 2 {
+		t.Fatalf("epoch = %d, want 2 after falling back to second peer", table.Epoch())
 	}
 	calls := client.callsSnapshot()
 	if len(calls) != 2 || calls[0] != "10.0.0.1:7000" || calls[1] != "10.0.0.2:7000" {
@@ -96,13 +121,9 @@ func TestSyncerTickTriesNextPeerWhenFetchedMapIsStale(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new table: %v", err)
 	}
-	// peer-1 claims epoch 2 but actually returns a map still at
-	// generation 1 (e.g. it raced its own Replace) - should not stop
-	// the search, since Table.Replace will reject it as unchanged.
 	stale := singleRange("node-1")
 	newer := RangeMap{
-		Generation: 2,
-		Ranges:     []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}}},
+		Ranges: []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}, Generation: 2, ProposalID: "replicas"}},
 	}
 	client := newFakeRangeMapClient()
 	client.results["10.0.0.1:7000"] = rangeMapResult{rangeMap: stale}
@@ -115,19 +136,18 @@ func TestSyncerTickTriesNextPeerWhenFetchedMapIsStale(t *testing.T) {
 	s := NewSyncer(table, client, peers, nil, testSyncerConfig())
 	s.tick(context.Background())
 
-	if table.Generation() != 2 {
-		t.Fatalf("generation = %d, want 2 after falling back past a stale response", table.Generation())
+	if table.Epoch() != 2 {
+		t.Fatalf("epoch = %d, want 2 after falling back past a stale response", table.Epoch())
 	}
 }
 
-func TestSyncerTickPublishesNewGenerationOnSuccessfulReplace(t *testing.T) {
+func TestSyncerTickPublishesNewEpochOnSuccessfulMerge(t *testing.T) {
 	table, err := NewTable("node-1", singleRange("node-1"))
 	if err != nil {
 		t.Fatalf("new table: %v", err)
 	}
 	newer := RangeMap{
-		Generation: 2,
-		Ranges:     []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}}},
+		Ranges: []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}, Generation: 2, ProposalID: "replicas"}},
 	}
 	client := newFakeRangeMapClient()
 	client.results["10.0.0.1:7000"] = rangeMapResult{rangeMap: newer}
@@ -170,8 +190,7 @@ func TestSyncerStartStopRunsLoopAndStopsCleanly(t *testing.T) {
 		t.Fatalf("new table: %v", err)
 	}
 	newer := RangeMap{
-		Generation: 2,
-		Ranges:     []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}}},
+		Ranges: []Range{{Start: "", End: "", Replicas: []string{"node-1", "node-2"}, Generation: 2, ProposalID: "replicas"}},
 	}
 	client := newFakeRangeMapClient()
 	client.results["10.0.0.1:7000"] = rangeMapResult{rangeMap: newer}
@@ -188,7 +207,7 @@ func TestSyncerStartStopRunsLoopAndStopsCleanly(t *testing.T) {
 
 	deadline := time.Now().Add(time.Second)
 	for time.Now().Before(deadline) {
-		if table.Generation() == 2 {
+		if table.Epoch() == 2 {
 			break
 		}
 		time.Sleep(2 * time.Millisecond)
@@ -196,8 +215,8 @@ func TestSyncerStartStopRunsLoopAndStopsCleanly(t *testing.T) {
 	cancel()
 	s.Stop()
 
-	if table.Generation() != 2 {
-		t.Fatalf("expected table to converge to generation 2 before stopping, got %d", table.Generation())
+	if table.Epoch() != 2 {
+		t.Fatalf("expected table to converge to epoch 2 before stopping, got %d", table.Epoch())
 	}
 }
 

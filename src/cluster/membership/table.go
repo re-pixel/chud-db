@@ -86,11 +86,8 @@ func (t *Table) Upsert(m Member) bool {
 	return true
 }
 
-// Merge applies incoming under SWIM precedence: a different ClusterID is
-// ignored; higher incarnation always wins; at equal incarnation, dead
-// beats suspect beats alive. Suspicion or death reported about the local
-// node is refuted rather than accepted. Merge reports whether the table
-// changed.
+// Merge applies SWIM liveness precedence while independently retaining
+// the highest range-map epoch learned for each peer.
 func (t *Table) Merge(incoming Member) bool {
 	if incoming.ClusterID != "" && incoming.ClusterID != t.clusterID {
 		return false
@@ -109,11 +106,19 @@ func (t *Table) Merge(incoming Member) bool {
 		t.setLocked(incoming)
 		return true
 	}
-	if !supersedes(incoming, current) {
-		return false
+	if supersedes(incoming, current) {
+		if current.RangeMapEpoch > incoming.RangeMapEpoch {
+			incoming.RangeMapEpoch = current.RangeMapEpoch
+		}
+		t.setLocked(incoming)
+		return true
 	}
-	t.setLocked(incoming)
-	return true
+	if incoming.RangeMapEpoch > current.RangeMapEpoch {
+		current.RangeMapEpoch = incoming.RangeMapEpoch
+		t.setLocked(current)
+		return true
+	}
+	return false
 }
 
 // MarkSuspect locally transitions nodeID from alive to suspect, gated on

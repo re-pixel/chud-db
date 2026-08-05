@@ -1610,6 +1610,8 @@ type RangeSpec struct {
 	Start          string                 `protobuf:"bytes,1,opt,name=start,proto3" json:"start,omitempty"`
 	End            string                 `protobuf:"bytes,2,opt,name=end,proto3" json:"end,omitempty"`
 	ReplicaNodeIds []string               `protobuf:"bytes,3,rep,name=replica_node_ids,json=replicaNodeIds,proto3" json:"replica_node_ids,omitempty"`
+	Generation     uint64                 `protobuf:"varint,4,opt,name=generation,proto3" json:"generation,omitempty"`
+	ProposalId     string                 `protobuf:"bytes,5,opt,name=proposal_id,json=proposalId,proto3" json:"proposal_id,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
@@ -1663,6 +1665,20 @@ func (x *RangeSpec) GetReplicaNodeIds() []string {
 		return x.ReplicaNodeIds
 	}
 	return nil
+}
+
+func (x *RangeSpec) GetGeneration() uint64 {
+	if x != nil {
+		return x.Generation
+	}
+	return 0
+}
+
+func (x *RangeSpec) GetProposalId() string {
+	if x != nil {
+		return x.ProposalId
+	}
+	return ""
 }
 
 type RangeMap struct {
@@ -2406,11 +2422,16 @@ const file_proto_cluster_v1_cluster_proto_rawDesc = "" +
 	"\x14IndirectPingResponse\x120\n" +
 	"\x06status\x18\x01 \x01(\v2\x18.nosql.cluster.v1.StatusR\x06status\x12/\n" +
 	"\x13target_acknowledged\x18\x02 \x01(\bR\x12targetAcknowledged\x12;\n" +
-	"\tresponder\x18\x03 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\tresponder\"]\n" +
+	"\tresponder\x18\x03 \x01(\v2\x1d.nosql.cluster.v1.MemberStateR\tresponder\"\x9e\x01\n" +
 	"\tRangeSpec\x12\x14\n" +
 	"\x05start\x18\x01 \x01(\tR\x05start\x12\x10\n" +
 	"\x03end\x18\x02 \x01(\tR\x03end\x12(\n" +
-	"\x10replica_node_ids\x18\x03 \x03(\tR\x0ereplicaNodeIds\"_\n" +
+	"\x10replica_node_ids\x18\x03 \x03(\tR\x0ereplicaNodeIds\x12\x1e\n" +
+	"\n" +
+	"generation\x18\x04 \x01(\x04R\n" +
+	"generation\x12\x1f\n" +
+	"\vproposal_id\x18\x05 \x01(\tR\n" +
+	"proposalId\"_\n" +
 	"\bRangeMap\x12\x1e\n" +
 	"\n" +
 	"generation\x18\x01 \x01(\x04R\n" +

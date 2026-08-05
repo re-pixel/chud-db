@@ -7,19 +7,22 @@ import (
 )
 
 func TestRangeRoundTrip(t *testing.T) {
-	r := Range{Start: "a", End: "m", Replicas: []string{"node-1", "node-2"}}
+	r := Range{
+		Start:      "a",
+		End:        "m",
+		Replicas:   []string{"node-1", "node-2"},
+		Generation: 4,
+		ProposalID: "proposal-1",
+	}
 
 	got := RangeFromProto(RangeToProto(r))
-	if got.Start != r.Start || got.End != r.End {
-		t.Fatalf("round trip bounds = (%q, %q), want (%q, %q)", got.Start, got.End, r.Start, r.End)
-	}
-	if len(got.Replicas) != 2 || got.Replicas[0] != "node-1" || got.Replicas[1] != "node-2" {
-		t.Fatalf("round trip replicas = %#v", got.Replicas)
+	if !rangesEqual(got, r) {
+		t.Fatalf("round trip = %#v, want %#v", got, r)
 	}
 }
 
 func TestRangeRoundTripPreservesUnboundedEnds(t *testing.T) {
-	r := Range{Start: "", End: "", Replicas: []string{"node-1"}}
+	r := Range{Start: "", End: "", Replicas: []string{"node-1"}, Generation: 1}
 
 	got := RangeFromProto(RangeToProto(r))
 	if got.Start != "" || got.End != "" {
@@ -36,22 +39,19 @@ func TestRangeFromProtoTreatsNilAsZeroValue(t *testing.T) {
 
 func TestRangeMapRoundTrip(t *testing.T) {
 	m := RangeMap{
-		Generation: 3,
 		Ranges: []Range{
-			{Start: "", End: "m", Replicas: []string{"node-1"}},
-			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}},
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 2, ProposalID: "left"},
+			{Start: "m", End: "", Replicas: []string{"node-2", "node-3"}, Generation: 3, ProposalID: "right"},
 		},
 	}
 
-	got := RangeMapFromProto(RangeMapToProto(m))
-	if got.Generation != m.Generation {
-		t.Fatalf("generation = %d, want %d", got.Generation, m.Generation)
+	wire := RangeMapToProto(m)
+	if wire.GetGeneration() != 3 {
+		t.Fatalf("wire epoch = %d, want 3", wire.GetGeneration())
 	}
-	if len(got.Ranges) != 2 {
-		t.Fatalf("ranges length = %d, want 2", len(got.Ranges))
-	}
-	if got.Ranges[1].Start != "m" || len(got.Ranges[1].Replicas) != 2 {
-		t.Fatalf("second range = %+v", got.Ranges[1])
+	got := RangeMapFromProto(wire)
+	if !rangeMapsEqual(got, m) {
+		t.Fatalf("round trip = %#v, want %#v", got, m)
 	}
 	if err := got.Validate(); err != nil {
 		t.Fatalf("round-tripped map should still validate: %v", err)
@@ -60,13 +60,13 @@ func TestRangeMapRoundTrip(t *testing.T) {
 
 func TestRangeMapFromProtoTreatsNilAsZeroValue(t *testing.T) {
 	got := RangeMapFromProto(nil)
-	if got.Generation != 0 || got.Ranges != nil {
+	if got.Ranges != nil {
 		t.Fatalf("expected zero value range map for nil, got %+v", got)
 	}
 }
 
 func TestRangeMapToProtoAndFromProtoHandleEmptyRanges(t *testing.T) {
-	m := RangeMap{Generation: 1}
+	m := RangeMap{}
 
 	pm := RangeMapToProto(m)
 	if len(pm.GetRanges()) != 0 {

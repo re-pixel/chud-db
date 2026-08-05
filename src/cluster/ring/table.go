@@ -2,8 +2,7 @@ package ring
 
 import "sync"
 
-// Table is a thread-safe, generation-gated holder of the local node's
-// current view of the cluster's RangeMap.
+// Table is a thread-safe holder of the local node's current RangeMap.
 type Table struct {
 	mu          sync.RWMutex
 	localNodeID string
@@ -20,11 +19,11 @@ func NewTable(localNodeID string, initial RangeMap) (*Table, error) {
 	return &Table{localNodeID: localNodeID, rangeMap: initial.Clone()}, nil
 }
 
-// Generation returns the currently held RangeMap's generation.
-func (t *Table) Generation() uint64 {
+// Epoch returns the highest range generation currently held.
+func (t *Table) Epoch() uint64 {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
-	return t.rangeMap.Generation
+	return t.rangeMap.Epoch()
 }
 
 // Snapshot returns a deep copy of the currently held RangeMap.
@@ -86,19 +85,14 @@ func (t *Table) OwnsRange(start, end string) bool {
 	return false
 }
 
-// Replace installs incoming as the current RangeMap if, and only if, it
-// passes validation and its generation is strictly greater than the one
-// currently held. It reports whether the table actually changed.
-func (t *Table) Replace(incoming RangeMap) (bool, error) {
-	if err := incoming.Validate(); err != nil {
-		return false, err
-	}
-
+// Merge reconciles incoming with the current RangeMap.
+func (t *Table) Merge(incoming RangeMap) (bool, error) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if incoming.Generation <= t.rangeMap.Generation {
-		return false, nil
+	merged, changed, err := t.rangeMap.Merge(incoming)
+	if err != nil || !changed {
+		return false, err
 	}
-	t.rangeMap = incoming.Clone()
+	t.rangeMap = merged
 	return true, nil
 }

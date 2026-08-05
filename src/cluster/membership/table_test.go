@@ -72,6 +72,45 @@ func TestMergeStatusPrecedenceAtEqualIncarnation(t *testing.T) {
 	}
 }
 
+func TestMergeUpdatesRangeMapEpochWithoutLivenessChange(t *testing.T) {
+	table := newTestTable()
+	table.Merge(Member{NodeID: "peer-1", Status: StatusAlive, Incarnation: 1, RangeMapEpoch: 2})
+
+	if !table.Merge(Member{NodeID: "peer-1", Status: StatusAlive, Incarnation: 1, RangeMapEpoch: 4}) {
+		t.Fatalf("higher range map epoch should change the member")
+	}
+	got, _ := table.Get("peer-1")
+	if got.Status != StatusAlive || got.Incarnation != 1 || got.RangeMapEpoch != 4 {
+		t.Fatalf("peer = %+v", got)
+	}
+}
+
+func TestMergePreservesRangeMapEpochAcrossLivenessUpdate(t *testing.T) {
+	table := newTestTable()
+	table.Merge(Member{NodeID: "peer-1", Status: StatusAlive, Incarnation: 1, RangeMapEpoch: 4})
+
+	if !table.Merge(Member{NodeID: "peer-1", Status: StatusSuspect, Incarnation: 2, RangeMapEpoch: 1}) {
+		t.Fatalf("higher incarnation should change the member")
+	}
+	got, _ := table.Get("peer-1")
+	if got.Status != StatusSuspect || got.Incarnation != 2 || got.RangeMapEpoch != 4 {
+		t.Fatalf("peer = %+v", got)
+	}
+}
+
+func TestMergeUpdatesRangeMapEpochFromStaleLivenessRecord(t *testing.T) {
+	table := newTestTable()
+	table.Merge(Member{NodeID: "peer-1", Status: StatusDead, Incarnation: 2, RangeMapEpoch: 1})
+
+	if !table.Merge(Member{NodeID: "peer-1", Status: StatusAlive, Incarnation: 1, RangeMapEpoch: 3}) {
+		t.Fatalf("higher range map epoch should be retained from stale liveness record")
+	}
+	got, _ := table.Get("peer-1")
+	if got.Status != StatusDead || got.Incarnation != 2 || got.RangeMapEpoch != 3 {
+		t.Fatalf("peer = %+v", got)
+	}
+}
+
 func TestMergeIgnoresDifferentClusterID(t *testing.T) {
 	table := newTestTable()
 

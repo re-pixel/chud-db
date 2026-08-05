@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"nosqlEngine/src/cluster/ring"
 	"nosqlEngine/src/cluster/transport"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/cluster/versioning"
@@ -38,6 +39,23 @@ func TestServerGetMerkleRootHappyPath(t *testing.T) {
 	}
 	if store.scanCall.start != "a" || store.scanCall.end != "z" {
 		t.Fatalf("scan call = %#v", store.scanCall)
+	}
+}
+
+func TestServerGetMerkleRootAcceptsExactBoundedOwnedRange(t *testing.T) {
+	table, err := ring.NewTable("node-1", ring.RangeMap{
+		Ranges: []ring.Range{
+			{Start: "", End: "m", Replicas: []string{"node-1"}, Generation: 1, ProposalID: "test"},
+			{Start: "m", End: "", Replicas: []string{"node-2"}, Generation: 1, ProposalID: "test"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("new table: %v", err)
+	}
+	server := NewServer(newFakeStore(), table)
+
+	if _, err := server.GetMerkleRoot(context.Background(), &pb.MerkleRootRequest{RangeStart: "", RangeEnd: "m"}); err != nil {
+		t.Fatalf("GetMerkleRoot: %v", err)
 	}
 }
 

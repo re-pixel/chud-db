@@ -2,12 +2,13 @@ package ring
 
 import (
 	"context"
+	"math/rand"
 	"sync"
 	"time"
 )
 
 // PeerEpoch is the minimal peer information Syncer needs: where to
-// reach a peer, and what range map generation it claims to know about.
+// reach a peer, and the highest range generation it claims to know.
 // Defined here rather than depending on the membership package, so ring
 // stays a leaf package; cmd/node adapts membership.Table.Snapshot()
 // into this shape.
@@ -24,7 +25,7 @@ type PeerEpochSource interface {
 }
 
 // LocalEpochPublisher lets Syncer advertise the local node's current
-// range map generation (e.g. over membership gossip) immediately after
+// range map epoch (e.g. over membership gossip) immediately after
 // a pull changes it, rather than leaving other nodes to notice only
 // once something else happens to touch local membership state.
 type LocalEpochPublisher interface {
@@ -42,13 +43,8 @@ type SyncerConfig struct {
 	PullTimeout time.Duration
 }
 
-// Syncer periodically checks known peers' advertised range map epochs
-// against the local Table's generation, and pulls the full map (via
-// RangeMapClient.GetRangeMap) from the first peer it finds reporting a
-// strictly newer epoch. This is the "pull on staleness" half of range
-// map propagation: the epoch itself already rides along on membership
-// gossip for free, so Syncer only pays for a full-map RPC when there is
-// concrete evidence it is actually behind.
+// Syncer pulls newer advertised range maps and periodically samples an
+// equal-epoch peer so independent per-range updates still converge.
 type Syncer struct {
 	table     *Table
 	client    RangeMapClient
@@ -63,7 +59,7 @@ type Syncer struct {
 
 // NewSyncer builds a Syncer. publisher may be nil, in which case a
 // successful pull updates the local Table but nothing announces the new
-// generation to peers (only useful in tests or single-node setups).
+// epoch to peers (only useful in tests or single-node setups).
 func NewSyncer(table *Table, client RangeMapClient, peers PeerEpochSource, publisher LocalEpochPublisher, cfg SyncerConfig) *Syncer {
 	return &Syncer{
 		table:     table,
@@ -107,32 +103,45 @@ func (s *Syncer) run(ctx context.Context) {
 	}
 }
 
-// tick pulls the full range map from the first peer whose advertised
-// epoch is strictly newer than the local generation, trying subsequent
-// candidates if a pull fails or the fetched map turns out to be stale
-// or invalid by the time it is applied. It stops at the first
-// successful replace.
 func (s *Syncer) tick(ctx context.Context) {
-	localGen := s.table.Generation()
+	peers := s.peers.PeerEpochs()
+	localEpoch := s.table.Epoch()
+	attempted := make(map[int]struct{}, len(peers))
 
-	for _, peer := range s.peers.PeerEpochs() {
-		if peer.RangeMapEpoch <= localGen {
+	for i, peer := range peers {
+		if peer.RangeMapEpoch <= localEpoch {
 			continue
 		}
-
-		pullCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
-		fetched, err := s.client.GetRangeMap(pullCtx, peer.AdvertiseAddr)
-		cancel()
-		if err != nil {
-			continue
+		attempted[i] = struct{}{}
+		if s.pull(ctx, peer) {
+			return
 		}
-		changed, err := s.table.Replace(fetched)
-		if err != nil || !changed {
-			continue
-		}
-		if s.publisher != nil {
-			s.publisher.PublishRangeMapEpoch(fetched.Generation)
-		}
-		return
 	}
+
+	candidates := make([]int, 0, len(peers)-len(attempted))
+	for i := range peers {
+		if _, ok := attempted[i]; !ok {
+			candidates = append(candidates, i)
+		}
+	}
+	if len(candidates) > 0 {
+		s.pull(ctx, peers[candidates[rand.Intn(len(candidates))]])
+	}
+}
+
+func (s *Syncer) pull(ctx context.Context, peer PeerEpoch) bool {
+	pullCtx, cancel := context.WithTimeout(ctx, s.cfg.PullTimeout)
+	fetched, err := s.client.GetRangeMap(pullCtx, peer.AdvertiseAddr)
+	cancel()
+	if err != nil {
+		return false
+	}
+	changed, err := s.table.Merge(fetched)
+	if err != nil || !changed {
+		return false
+	}
+	if s.publisher != nil {
+		s.publisher.PublishRangeMapEpoch(s.table.Epoch())
+	}
+	return true
 }

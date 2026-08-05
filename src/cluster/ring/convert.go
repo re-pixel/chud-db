@@ -7,6 +7,8 @@ func RangeToProto(r Range) *pb.RangeSpec {
 		Start:          r.Start,
 		End:            r.End,
 		ReplicaNodeIds: append([]string(nil), r.Replicas...),
+		Generation:     r.Generation,
+		ProposalId:     r.ProposalID,
 	}
 }
 
@@ -15,9 +17,11 @@ func RangeFromProto(spec *pb.RangeSpec) Range {
 		return Range{}
 	}
 	return Range{
-		Start:    spec.GetStart(),
-		End:      spec.GetEnd(),
-		Replicas: append([]string(nil), spec.GetReplicaNodeIds()...),
+		Start:      spec.GetStart(),
+		End:        spec.GetEnd(),
+		Replicas:   append([]string(nil), spec.GetReplicaNodeIds()...),
+		Generation: spec.GetGeneration(),
+		ProposalID: spec.GetProposalId(),
 	}
 }
 
@@ -27,7 +31,7 @@ func RangeMapToProto(m RangeMap) *pb.RangeMap {
 		ranges = append(ranges, RangeToProto(r))
 	}
 	return &pb.RangeMap{
-		Generation: m.Generation,
+		Generation: m.Epoch(),
 		Ranges:     ranges,
 	}
 }
@@ -41,8 +45,5 @@ func RangeMapFromProto(pm *pb.RangeMap) RangeMap {
 	for _, spec := range specs {
 		ranges = append(ranges, RangeFromProto(spec))
 	}
-	return RangeMap{
-		Generation: pm.GetGeneration(),
-		Ranges:     ranges,
-	}
+	return RangeMap{Ranges: ranges}
 }
