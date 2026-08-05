@@ -10,6 +10,8 @@
   "write_quorum": 2,
   "tablet_split_bytes": 268435456,
   "tablet_merge_bytes": 67108864,
+  "tablet_check_interval": "30s",
+  "tablet_settling_ticks": 2,
   "gossip_interval": "1s",
   "ping_timeout": "500ms",
   "suspect_timeout": "5s",

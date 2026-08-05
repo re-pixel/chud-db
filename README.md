@@ -114,7 +114,7 @@ dropTombstones = isLastLevel &&
 
 ## Cluster node (distribution layer)
 
-`cmd/node` boots a single cluster node: the storage engine, a gRPC `NodeService` (read/write) and `GossipService` (SWIM membership) endpoint, and a background gossiper that discovers peers and detects failures.
+`cmd/node` boots the storage engine, cluster gRPC services, SWIM membership, quorum coordination, anti-entropy repair, and dynamic tablet management.
 
 ```bash
 go build -o bin/nosql-node ./cmd/node
@@ -136,17 +136,16 @@ go build -o bin/nosql-node ./cmd/node
 
 Within a couple of `gossip_interval` ticks each node's membership table converges to all three nodes marked `alive`. Membership is in-memory only — restart a node and it re-bootstraps from the seed list.
 
-The three example configs also carry a static, matching range map
+The three example configs start from a matching range map
 (`range_map_generation: 1`, `range_map_replicas: ["node-1", "node-2"]`,
 `replication_factor: 2`) so the same smoke test cluster can be used to
 check range ownership: querying `RangeMapService.GetRangeMap` on any of
 the three nodes returns the identical single global range
 `["", "") -> [node-1, node-2]`, and `node-3` — deliberately left out of
 the replica list — rejects `NodeService.Put`/`Get`/`RangeScan` with
-`FailedPrecondition`, while `node-1`/`node-2` serve them normally. Range
-map propagation is config-driven only today (no live mutation yet), so
-all three files must list the same generation/replicas for the map to
-actually agree.
+`FailedPrecondition`, while `node-1`/`node-2` serve them normally. The
+configured tablet thresholds are intentionally high enough that this
+initial map remains unchanged during an ordinary smoke test.
 
 ### Coordinated writes/reads (quorum replication)
 
@@ -240,6 +239,53 @@ To see it repair a straggler on the 3-node cluster above:
    clock `node-1` stamped (`{node-1: 1}`) — proof it arrived via
    anti-entropy pulling `node-1`'s causally-dominant version, not via
    the original (quorum-1) write it never saw.
+
+### Dynamic tablets
+
+Each node periodically measures the ranges it owns. A range at or above
+`tablet_split_bytes` is split near its byte-weighted midpoint; adjacent
+ranges at or below `tablet_merge_bytes` are merged when the deciding
+node owns both. `tablet_check_interval` controls the check frequency,
+and `tablet_settling_ticks` prevents a newly assigned replica from
+proposing a merge while it is still empty.
+
+Replica placement uses rendezvous hashing over alive members. Every
+change retains enough existing replicas to keep the data reachable,
+introducing at most one empty replica at a time. Anti-entropy then
+copies the affected range to that replica. Per-range generations allow
+unrelated changes to converge independently; deterministic proposal
+IDs resolve simultaneous changes to the same range.
+
+To exercise splitting on the local cluster, start all three nodes with:
+
+```bash
+export NOSQL_CLUSTER_TABLET_SPLIT_BYTES=1024
+export NOSQL_CLUSTER_TABLET_MERGE_BYTES=256
+export NOSQL_CLUSTER_TABLET_CHECK_INTERVAL=1s
+export NOSQL_CLUSTER_TABLET_SETTLING_TICKS=1
+export NOSQL_CLUSTER_ANTI_ENTROPY_INTERVAL=1s
+```
+
+Write unique keys with values large enough to cross 1 KiB, wait a check
+tick, then inspect every node:
+
+```bash
+grpcurl -plaintext -import-path proto -proto cluster/v1/cluster.proto \
+  127.0.0.1:7001 nosql.cluster.v1.RangeMapService/GetRangeMap
+```
+
+The response changes from one global range to contiguous ranges with
+higher per-range `generation` values. Repeat against ports `7002` and
+`7003` to confirm propagation. If a child lists `node-3`, a direct
+`NodeService.Get` for a key in that child succeeds after anti-entropy
+runs, demonstrating reassignment and catch-up.
+
+Range scans are still single-tablet operations: a `NodeService.RangeScan`
+whose interval crosses a tablet boundary returns `FailedPrecondition`.
+Point reads and writes continue routing through the current range map.
+Range metadata is currently in memory: a rolling restart recovers it
+from live peers, while restarting the whole cluster resets to the
+configured bootstrap range.
 
 ---
 
