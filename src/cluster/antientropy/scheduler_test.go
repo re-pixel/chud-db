@@ -65,6 +65,21 @@ func TestSchedulerRepairsOneSidedMissingKeysBothDirections(t *testing.T) {
 	}
 }
 
+func TestSchedulerSkipsPulledKeyAfterOwnershipChanges(t *testing.T) {
+	local := newMemStore()
+	client := newFakeReplicaClient()
+	client.peerStore("addr-b").set("moved", versioning.NewPut(versioning.VectorClock{"node-b": 1}, "value", time.Unix(0, 1)))
+	ranges := fakeOwnedRangesSource{owns: func(key string) bool { return key != "moved" }}
+
+	sched := NewScheduler(testSchedulerConfig(), local, fakeAddressResolver{}, client, ranges)
+	if err := sched.RepairRange(context.Background(), "addr-b", "", ""); err != nil {
+		t.Fatalf("RepairRange: %v", err)
+	}
+	if _, ok := local.get("moved"); ok {
+		t.Fatalf("pulled key should not be applied after local ownership moved")
+	}
+}
+
 func TestSchedulerRepairsDominatedStaleKeyBothDirections(t *testing.T) {
 	local := newMemStore()
 	local.set("stale-on-peer", versioning.NewPut(versioning.VectorClock{"x": 2}, "local-newer", time.Unix(0, 2)))
@@ -516,10 +531,15 @@ func (r fakeAddressResolver) Address(nodeID string) (string, bool) {
 // fakeOwnedRangesSource returns a fixed set of owned ranges.
 type fakeOwnedRangesSource struct {
 	ranges []OwnedRange
+	owns   func(string) bool
 }
 
 func (f fakeOwnedRangesSource) OwnedRanges() []OwnedRange {
 	return f.ranges
+}
+
+func (f fakeOwnedRangesSource) IsOwner(key string) bool {
+	return f.owns == nil || f.owns(key)
 }
 
 // splitKey identifies one diffNode call site for splitTable below.

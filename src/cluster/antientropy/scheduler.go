@@ -23,10 +23,10 @@ type OwnedRange struct {
 	Replicas []string
 }
 
-// OwnedRangesSource supplies the set of ranges the local node currently
-// owns, each tagged with its full replica set.
+// OwnedRangesSource supplies current range and key ownership.
 type OwnedRangesSource interface {
 	OwnedRanges() []OwnedRange
+	IsOwner(key string) bool
 }
 
 // AddressResolver resolves a node ID to the network address the
@@ -312,6 +312,9 @@ func classifyKey(local, peer versioning.KeyEnvelope) (pull, push *versioning.Key
 func (s *Scheduler) applyPulls(rows []versioning.KeyEnvelope) error {
 	var firstErr error
 	for _, row := range rows {
+		if !s.ranges.IsOwner(row.Key) {
+			continue
+		}
 		var err error
 		if row.Envelope.Deleted {
 			err = s.local.Delete(row.Key, row.Envelope, true)

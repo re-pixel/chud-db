@@ -16,6 +16,7 @@ import (
 	clustermembership "nosqlEngine/src/cluster/membership"
 	clusternode "nosqlEngine/src/cluster/node"
 	clusterring "nosqlEngine/src/cluster/ring"
+	clustertablet "nosqlEngine/src/cluster/tablet"
 	"nosqlEngine/src/cluster/transport/pb"
 	"nosqlEngine/src/engine"
 
@@ -54,10 +55,14 @@ func run() error {
 		return fmt.Errorf("listen on %s: %w", cfg.ListenAddr, err)
 	}
 
-	ringTable, err := clusterring.NewTable(cfg.NodeID, clusterring.RangeMap{
+	initialRange := clusterring.Range{
+		Start:      "",
+		End:        "",
+		Replicas:   cfg.RangeMapReplicas,
 		Generation: cfg.RangeMapGeneration,
-		Ranges:     []clusterring.Range{{Start: "", End: "", Replicas: cfg.RangeMapReplicas}},
-	})
+	}
+	initialRange.ProposalID = clusterring.ProposalID([]clusterring.Range{initialRange})
+	ringTable, err := clusterring.NewTable(cfg.NodeID, clusterring.RangeMap{Ranges: []clusterring.Range{initialRange}})
 	if err != nil {
 		return fmt.Errorf("build initial range map: %w", err)
 	}
@@ -77,6 +82,9 @@ func run() error {
 		AdvertiseAddr: cfg.AdvertiseAddr,
 		RangeMapEpoch: cfg.RangeMapGeneration,
 	})
+	rangeMapPublisher := clusterring.LocalEpochPublisherFunc(func(epoch uint64) {
+		table.SetLocalRangeMapEpoch(epoch)
+	})
 	gossipServer := clustermembership.NewServer(table, membershipClient, cfg.PingTimeout)
 	gossiper := clustermembership.NewGossiper(table, membershipClient, clustermembership.GossiperConfig{
 		GossipInterval:     cfg.GossipInterval,
@@ -94,7 +102,7 @@ func run() error {
 		ringTable,
 		ringClient,
 		membershipPeerEpochs{table},
-		clusterring.LocalEpochPublisherFunc(func(epoch uint64) { table.SetLocalRangeMapEpoch(epoch) }),
+		rangeMapPublisher,
 		clusterring.SyncerConfig{Interval: cfg.GossipInterval, PullTimeout: cfg.PingTimeout},
 	)
 
@@ -132,6 +140,20 @@ func run() error {
 		antiEntropyClient,
 		ringOwnedRanges{table: ringTable, localID: cfg.NodeID},
 	)
+	tabletScheduler := clustertablet.NewScheduler(
+		clustertablet.SchedulerConfig{
+			NodeID:            cfg.NodeID,
+			Interval:          cfg.TabletCheckInterval,
+			SplitBytes:        cfg.TabletSplitBytes,
+			MergeBytes:        cfg.TabletMergeBytes,
+			ReplicationFactor: cfg.ReplicationFactor,
+			SettlingTicks:     cfg.TabletSettlingTicks,
+		},
+		nodeTabletStore{store},
+		ringTable,
+		membershipAliveNodes{table},
+		rangeMapPublisher,
+	)
 
 	grpcServer := grpc.NewServer()
 	pb.RegisterNodeServiceServer(grpcServer, nodeServer)
@@ -151,6 +173,7 @@ func run() error {
 	gossiper.Start(gossipCtx)
 	syncer.Start(gossipCtx)
 	antiEntropyScheduler.Start(gossipCtx)
+	tabletScheduler.Start(gossipCtx)
 
 	fmt.Printf("node %s listening on %s (advertise %s)\n", cfg.NodeID, cfg.ListenAddr, cfg.AdvertiseAddr)
 
@@ -165,6 +188,7 @@ func run() error {
 		gossiper.Stop()
 		syncer.Stop()
 		antiEntropyScheduler.Stop()
+		tabletScheduler.Stop()
 		shutdownGRPC(grpcServer)
 		return nil
 	case err := <-serveErr:
@@ -172,6 +196,7 @@ func run() error {
 		gossiper.Stop()
 		syncer.Stop()
 		antiEntropyScheduler.Stop()
+		tabletScheduler.Stop()
 		return fmt.Errorf("serve grpc: %w", err)
 	}
 }
@@ -216,6 +241,21 @@ func (m membershipAddressResolver) Address(nodeID string) (string, bool) {
 	return member.AdvertiseAddr, true
 }
 
+type membershipAliveNodes struct {
+	table *clustermembership.Table
+}
+
+func (m membershipAliveNodes) AliveNodeIDs() []string {
+	members := m.table.Snapshot()
+	nodeIDs := make([]string, 0, len(members))
+	for _, member := range members {
+		if member.Status == clustermembership.StatusAlive {
+			nodeIDs = append(nodeIDs, member.NodeID)
+		}
+	}
+	return nodeIDs
+}
+
 // nodeAntiEntropyStore adapts a *clusternode.NodeStore into the
 // clusterantientropy.Store the Server and Scheduler need. Put/Delete
 // are promoted directly from the embedded NodeStore (identical
@@ -238,6 +278,22 @@ func (n nodeAntiEntropyStore) ScanRawRange(start, end string) ([]clusterantientr
 	return entries, nil
 }
 
+type nodeTabletStore struct {
+	*clusternode.NodeStore
+}
+
+func (n nodeTabletStore) ScanRawRange(start, end string) ([]clustertablet.RawEntry, error) {
+	rows, err := n.NodeStore.ScanRawRange(start, end)
+	if err != nil {
+		return nil, err
+	}
+	entries := make([]clustertablet.RawEntry, len(rows))
+	for i, row := range rows {
+		entries[i] = clustertablet.RawEntry{Key: row.Key, Value: row.Value}
+	}
+	return entries, nil
+}
+
 // ringOwnedRanges adapts a ring.Table into the
 // clusterantientropy.OwnedRangesSource the Scheduler needs: every range
 // whose replica set includes the local node, tagged with its full
@@ -245,6 +301,10 @@ func (n nodeAntiEntropyStore) ScanRawRange(start, end string) ([]clusterantientr
 type ringOwnedRanges struct {
 	table   *clusterring.Table
 	localID string
+}
+
+func (r ringOwnedRanges) IsOwner(key string) bool {
+	return r.table.IsOwner(key)
 }
 
 func (r ringOwnedRanges) OwnedRanges() []clusterantientropy.OwnedRange {
