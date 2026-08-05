@@ -23,6 +23,8 @@ type Config struct {
 	WriteQuorum                  int           `json:"write_quorum"`
 	TabletSplitBytes             int64         `json:"tablet_split_bytes"`
 	TabletMergeBytes             int64         `json:"tablet_merge_bytes"`
+	TabletCheckInterval          time.Duration `json:"-"`
+	TabletSettlingTicks          int           `json:"tablet_settling_ticks"`
 	AntiEntropyInterval          time.Duration `json:"-"`
 	AntiEntropyTimeout           time.Duration `json:"-"`
 	AntiEntropyFanout            int           `json:"anti_entropy_fanout"`
@@ -50,6 +52,8 @@ type fileConfig struct {
 	WriteQuorum                  *int     `json:"write_quorum"`
 	TabletSplitBytes             *int64   `json:"tablet_split_bytes"`
 	TabletMergeBytes             *int64   `json:"tablet_merge_bytes"`
+	TabletCheckInterval          *string  `json:"tablet_check_interval"`
+	TabletSettlingTicks          *int     `json:"tablet_settling_ticks"`
 	AntiEntropyInterval          *string  `json:"anti_entropy_interval"`
 	AntiEntropyTimeout           *string  `json:"anti_entropy_timeout"`
 	AntiEntropyFanout            *int     `json:"anti_entropy_fanout"`
@@ -78,6 +82,8 @@ func DefaultConfig() Config {
 		WriteQuorum:                  2,
 		TabletSplitBytes:             256 << 20,
 		TabletMergeBytes:             64 << 20,
+		TabletCheckInterval:          30 * time.Second,
+		TabletSettlingTicks:          2,
 		AntiEntropyInterval:          time.Minute,
 		AntiEntropyTimeout:           5 * time.Second,
 		AntiEntropyFanout:            4,
@@ -148,6 +154,12 @@ func (cfg Config) Validate() error {
 	}
 	if cfg.TabletSplitBytes <= cfg.TabletMergeBytes {
 		return fmt.Errorf("tablet_split_bytes must be greater than tablet_merge_bytes")
+	}
+	if cfg.TabletCheckInterval <= 0 {
+		return fmt.Errorf("tablet_check_interval must be > 0")
+	}
+	if cfg.TabletSettlingTicks < 1 {
+		return fmt.Errorf("tablet_settling_ticks must be >= 1")
 	}
 	if cfg.AntiEntropyInterval <= 0 {
 		return fmt.Errorf("anti_entropy_interval must be > 0")
@@ -226,6 +238,16 @@ func applyFileConfig(cfg *Config, data []byte) error {
 	}
 	if fc.TabletMergeBytes != nil {
 		cfg.TabletMergeBytes = *fc.TabletMergeBytes
+	}
+	if fc.TabletCheckInterval != nil {
+		d, err := time.ParseDuration(*fc.TabletCheckInterval)
+		if err != nil {
+			return fmt.Errorf("parse tablet_check_interval: %w", err)
+		}
+		cfg.TabletCheckInterval = d
+	}
+	if fc.TabletSettlingTicks != nil {
+		cfg.TabletSettlingTicks = *fc.TabletSettlingTicks
 	}
 	if fc.AntiEntropyInterval != nil {
 		d, err := time.ParseDuration(*fc.AntiEntropyInterval)
@@ -350,6 +372,20 @@ func applyEnv(cfg *Config) error {
 			return fmt.Errorf("parse %sTABLET_MERGE_BYTES: %w", envPrefix, err)
 		}
 		cfg.TabletMergeBytes = n
+	}
+	if v, ok := getenv("TABLET_CHECK_INTERVAL"); ok {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			return fmt.Errorf("parse %sTABLET_CHECK_INTERVAL: %w", envPrefix, err)
+		}
+		cfg.TabletCheckInterval = d
+	}
+	if v, ok := getenv("TABLET_SETTLING_TICKS"); ok {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			return fmt.Errorf("parse %sTABLET_SETTLING_TICKS: %w", envPrefix, err)
+		}
+		cfg.TabletSettlingTicks = n
 	}
 	if v, ok := getenv("ANTI_ENTROPY_INTERVAL"); ok {
 		d, err := time.ParseDuration(v)

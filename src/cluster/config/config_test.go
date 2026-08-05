@@ -25,6 +25,9 @@ func TestDefaultConfigValidates(t *testing.T) {
 	if cfg.ReplicationTimeout != 2*time.Second {
 		t.Fatalf("unexpected default replication timeout: %+v", cfg)
 	}
+	if cfg.TabletCheckInterval != 30*time.Second || cfg.TabletSettlingTicks != 2 {
+		t.Fatalf("unexpected default tablet scheduler config: %+v", cfg)
+	}
 	if cfg.AntiEntropyTimeout != 5*time.Second {
 		t.Fatalf("unexpected default anti entropy timeout: %+v", cfg)
 	}
@@ -76,6 +79,8 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 		"write_quorum": 2,
 		"tablet_split_bytes": 1048576,
 		"tablet_merge_bytes": 262144,
+		"tablet_check_interval": "12s",
+		"tablet_settling_ticks": 3,
 		"anti_entropy_interval": "30s",
 		"anti_entropy_timeout": "8s",
 		"anti_entropy_fanout": 8,
@@ -103,6 +108,9 @@ func TestLoadAppliesJSONFile(t *testing.T) {
 	}
 	if len(cfg.Seeds) != 2 || cfg.Seeds[0] != "10.0.0.1:7100" || cfg.Seeds[1] != "10.0.0.3:7100" {
 		t.Fatalf("seeds = %#v", cfg.Seeds)
+	}
+	if cfg.TabletCheckInterval != 12*time.Second || cfg.TabletSettlingTicks != 3 {
+		t.Fatalf("tablet scheduler config = interval=%v settling=%d", cfg.TabletCheckInterval, cfg.TabletSettlingTicks)
 	}
 	if cfg.AntiEntropyInterval != 30*time.Second {
 		t.Fatalf("anti entropy interval = %v", cfg.AntiEntropyInterval)
@@ -152,6 +160,8 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}`)
 	t.Setenv("NOSQL_CLUSTER_NODE_ID", "env-node")
 	t.Setenv("NOSQL_CLUSTER_SEEDS", "10.0.0.1:7100, 10.0.0.2:7100,,")
+	t.Setenv("NOSQL_CLUSTER_TABLET_CHECK_INTERVAL", "20s")
+	t.Setenv("NOSQL_CLUSTER_TABLET_SETTLING_TICKS", "4")
 	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_INTERVAL", "45s")
 	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_TIMEOUT", "9s")
 	t.Setenv("NOSQL_CLUSTER_ANTI_ENTROPY_FANOUT", "6")
@@ -175,6 +185,9 @@ func TestLoadEnvOverridesFile(t *testing.T) {
 	}
 	if len(cfg.Seeds) != 2 || cfg.Seeds[0] != "10.0.0.1:7100" || cfg.Seeds[1] != "10.0.0.2:7100" {
 		t.Fatalf("seeds = %#v", cfg.Seeds)
+	}
+	if cfg.TabletCheckInterval != 20*time.Second || cfg.TabletSettlingTicks != 4 {
+		t.Fatalf("tablet scheduler config = interval=%v settling=%d", cfg.TabletCheckInterval, cfg.TabletSettlingTicks)
 	}
 	if cfg.AntiEntropyInterval != 45*time.Second {
 		t.Fatalf("anti entropy interval = %v", cfg.AntiEntropyInterval)
@@ -230,6 +243,26 @@ func TestValidateRejectsBadTabletThresholds(t *testing.T) {
 	err := cfg.Validate()
 	if err == nil || !strings.Contains(err.Error(), "tablet_split_bytes") {
 		t.Fatalf("expected tablet threshold error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveTabletCheckInterval(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.TabletCheckInterval = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "tablet_check_interval") {
+		t.Fatalf("expected tablet_check_interval error, got %v", err)
+	}
+}
+
+func TestValidateRejectsNonPositiveTabletSettlingTicks(t *testing.T) {
+	cfg := DefaultConfig()
+	cfg.TabletSettlingTicks = 0
+
+	err := cfg.Validate()
+	if err == nil || !strings.Contains(err.Error(), "tablet_settling_ticks") {
+		t.Fatalf("expected tablet_settling_ticks error, got %v", err)
 	}
 }
 
@@ -334,12 +367,30 @@ func TestLoadRejectsInvalidDuration(t *testing.T) {
 	}
 }
 
+func TestLoadRejectsInvalidTabletCheckInterval(t *testing.T) {
+	path := writeConfig(t, `{"tablet_check_interval": "not-a-duration"}`)
+
+	_, err := Load(path)
+	if err == nil || !strings.Contains(err.Error(), "tablet_check_interval") {
+		t.Fatalf("expected tablet_check_interval parse error, got %v", err)
+	}
+}
+
 func TestLoadRejectsInvalidEnvInteger(t *testing.T) {
 	t.Setenv("NOSQL_CLUSTER_REPLICATION_FACTOR", "many")
 
 	_, err := Load("")
 	if err == nil || !strings.Contains(err.Error(), "REPLICATION_FACTOR") {
 		t.Fatalf("expected env integer parse error, got %v", err)
+	}
+}
+
+func TestLoadRejectsInvalidTabletSettlingTicks(t *testing.T) {
+	t.Setenv("NOSQL_CLUSTER_TABLET_SETTLING_TICKS", "many")
+
+	_, err := Load("")
+	if err == nil || !strings.Contains(err.Error(), "TABLET_SETTLING_TICKS") {
+		t.Fatalf("expected tablet settling ticks parse error, got %v", err)
 	}
 }
 
