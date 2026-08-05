@@ -86,3 +86,25 @@ func (m RangeMap) OwnersForKeyRange(start, end string) ([]string, bool) {
 	}
 	return nil, false
 }
+
+// OwnersForRange returns the replica node IDs owning the half-open
+// interval [start, end), and whether it falls within a single Range.
+func (m RangeMap) OwnersForRange(start, end string) ([]string, bool) {
+	if end != "" && start >= end {
+		return nil, false
+	}
+	for _, r := range m.Ranges {
+		if !r.Contains(start) {
+			continue
+		}
+		if end == "" {
+			if r.End != "" {
+				return nil, false
+			}
+		} else if r.End != "" && end > r.End {
+			return nil, false
+		}
+		return append([]string(nil), r.Replicas...), true
+	}
+	return nil, false
+}

@@ -27,7 +27,7 @@ type Store interface {
 // to keep this package decoupled from node's concrete adapter.
 type RangeOwnership interface {
 	IsOwner(key string) bool
-	OwnsKeyRange(start, end string) bool
+	OwnsRange(start, end string) bool
 }
 
 // Server implements pb.AntiEntropyServiceServer against local storage. It
@@ -53,7 +53,7 @@ func (s *Server) GetMerkleRoot(ctx context.Context, req *pb.MerkleRootRequest) (
 		return nil, status.FromContextError(err).Err()
 	}
 	start, end := req.GetRangeStart(), req.GetRangeEnd()
-	if !s.ownership.OwnsKeyRange(start, end) {
+	if !s.ownership.OwnsRange(start, end) {
 		return nil, s.notOwnerRangeError(start, end)
 	}
 
@@ -70,7 +70,7 @@ func (s *Server) GetMerkleRoot(ctx context.Context, req *pb.MerkleRootRequest) (
 
 func (s *Server) StreamRange(req *pb.StreamRangeRequest, stream pb.AntiEntropyService_StreamRangeServer) error {
 	start, end := req.GetRangeStart(), req.GetRangeEnd()
-	if !s.ownership.OwnsKeyRange(start, end) {
+	if !s.ownership.OwnsRange(start, end) {
 		return s.notOwnerRangeError(start, end)
 	}
 

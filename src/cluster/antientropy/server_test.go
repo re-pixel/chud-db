@@ -303,8 +303,8 @@ func newFakeOwnership() *fakeOwnership {
 	return &fakeOwnership{ownsKey: true, ownsRange: true}
 }
 
-func (o *fakeOwnership) IsOwner(string) bool              { return o.ownsKey }
-func (o *fakeOwnership) OwnsKeyRange(string, string) bool { return o.ownsRange }
+func (o *fakeOwnership) IsOwner(string) bool           { return o.ownsKey }
+func (o *fakeOwnership) OwnsRange(string, string) bool { return o.ownsRange }
 
 // fakeStream is a minimal grpc.ServerStreamingServer[pb.KeyEnvelope] stand-in.
 type fakeStream struct {

@@ -69,6 +69,23 @@ func (t *Table) OwnsKeyRange(start, end string) bool {
 	return false
 }
 
+// OwnsRange reports whether the local node owns the half-open interval
+// [start, end). See RangeMap.OwnersForRange.
+func (t *Table) OwnsRange(start, end string) bool {
+	t.mu.RLock()
+	owners, ok := t.rangeMap.OwnersForRange(start, end)
+	t.mu.RUnlock()
+	if !ok {
+		return false
+	}
+	for _, id := range owners {
+		if id == t.localNodeID {
+			return true
+		}
+	}
+	return false
+}
+
 // Replace installs incoming as the current RangeMap if, and only if, it
 // passes validation and its generation is strictly greater than the one
 // currently held. It reports whether the table actually changed.
